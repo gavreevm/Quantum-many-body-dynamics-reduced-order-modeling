@@ -1,14 +1,14 @@
 import jax.numpy as jnp
 from typing import List, Tuple, Union
 from functools import reduce
-from mps_utils import _push_r_backward, _push_r_forward
+from mps_utils import _push_r_backward, _push_r_forward, _push_orth_center_forward, _set_rank
 
 # mps is a list with complex valued jnp.ndarray of shape (left_bond, dim, right_bond),
 # where dim is a local dimension, left and right bonds take values 1, 2, ...
 
 mps = List[jnp.ndarray]  # mps dtype (list with complex valued 3-rank tensors)
 
-def set_to_forward_canonical(inp_mps: mps) -> Tuple[jnp.ndarray, jnp.ndarray]:
+def set_to_forward_canonical(inp_mps: mps) -> jnp.ndarray:
     """This function sets mps to the forward (left) canonical form.
     It acts inplace in order to save memory.
 
@@ -16,7 +16,7 @@ def set_to_forward_canonical(inp_mps: mps) -> Tuple[jnp.ndarray, jnp.ndarray]:
         inp_mps (mps): [input mps]
 
     Returns:
-        Tuple[jnp.ndarray, jnp.ndarray]: [logarithmic frobenius norm of the inp_mps and final r matrix]
+        jnp.ndarray: [logarithmic frobenius norm of the inp_mps]
     """
 
     # TODO: consider other construction then for loop here
@@ -28,10 +28,11 @@ def set_to_forward_canonical(inp_mps: mps) -> Tuple[jnp.ndarray, jnp.ndarray]:
         r /= norm
         lognorm += jnp.log(norm)
         inp_mps[i] = ker
-    return lognorm, r
+    inp_mps[-1] = jnp.tensordot(inp_mps[-1], r, axes=1)
+    return lognorm
 
 
-def set_to_backward_canonical(inp_mps: mps) -> Tuple[jnp.ndarray, jnp.ndarray]:
+def set_to_backward_canonical(inp_mps: mps) -> jnp.ndarray:
     """This function sets mps to the backward (right) canonical form.
     It acts inplace in order to save memory.
 
@@ -39,7 +40,7 @@ def set_to_backward_canonical(inp_mps: mps) -> Tuple[jnp.ndarray, jnp.ndarray]:
         inp_mps (mps): [input mps]
 
     Returns:
-        Tuple[jnp.ndarray, jnp.ndarray]: [logarithmic frobenius norm of the inp_mps and final r matrix]
+        jnp.ndarray: [logarithmic frobenius norm of the inp_mps]
     """
 
     # TODO: consider other construction then for loop here
@@ -51,7 +52,8 @@ def set_to_backward_canonical(inp_mps: mps) -> Tuple[jnp.ndarray, jnp.ndarray]:
         r /= norm
         lognorm += jnp.log(norm)
         inp_mps[len(inp_mps) - i - 1] = ker
-    return lognorm, r
+    inp_mps[0] = jnp.tensordot(r, inp_mps[0], axes=1)
+    return lognorm
 
 
 def dot_prod(inp_mps1: mps, inp_mps2: mps) -> jnp.ndarray:
@@ -81,5 +83,38 @@ def dot_prod(inp_mps1: mps, inp_mps2: mps) -> jnp.ndarray:
 
     return lognorm
 
-def truncate_forwaed_canonical(inp_mps: mps, eps: Union[float, jnp.ndarray]) -> None:
-    pass
+
+def truncate_forward_canonical(inp_mps: mps, eps: Union[float, jnp.ndarray]) -> None:
+    """This function contructs forward canonical form of a mps. It acts inplace
+    in order to save memory.
+
+    Args:
+        inp_mps (mps): [input mps]
+        eps (Union[float, jnp.ndarray]): [accuracy of truncation]
+    """
+
+    u = jnp.eye(inp_mps[-1].shape[-1])
+    spec = jnp.ones((inp_mps[-1].shape[-1],))
+    for i, ker in enumerate(reversed(inp_mps)):
+        ker, u, spec = _push_orth_center_forward(ker, u, spec, eps)
+        inp_mps[len(inp_mps) - i - 1] = ker
+
+
+def truncate_very_last_edge_backward_canonical(inp_mps: mps, eps: Union[float, jnp.ndarray]) -> None:
+    """This function truncates the last edge of a mps in the backward (right) canonical form.
+    It is necessary to perform complite truncation of an environment. The function
+    acts inplace in order to svae memory.
+
+    Args:
+        inp_mps (mps): [input mps]
+        eps (Union[float, jnp.ndarray]): [accuracy]
+    """
+
+    _, dim, right_bond = inp_mps[0].shape
+    dens = jnp.tensordot(inp_mps[0].conj(), inp_mps[0], axes=[[0], [0]])
+    dens = dens.reshape((-1, dens.shape[1] * dens.shape[2]))
+    _, s, vh = jnp.linalg.svd(dens, full_matrices=False)
+    eta = _set_rank(s, eps)
+    s, vh = s[:eta], vh[:eta, :]
+    vh = vh.reshape((-1, dim, right_bond))
+    inp_mps[0] = jnp.sqrt(s)[:, jnp.newaxis, jnp.newaxis] * vh
