@@ -92,7 +92,7 @@ def test_set_to_forward_canonical(inp_mps):
 
 @pytest.mark.parametrize("inp_mps", [inp_mps1])
 def test_set_to_backward_canonical(inp_mps):
-    """Check variou properties of the obtained canonical form"""
+    """Check various properties of the obtained canonical form"""
 
     inp_mps_copy = copy.deepcopy(inp_mps)
     log_norm_via_dot_prod = dot_prod(inp_mps_copy, inp_mps_copy) / 2
