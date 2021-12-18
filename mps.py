@@ -5,14 +5,16 @@ from mps_utils import _push_r_backward, _push_r_forward, _push_orth_center_forwa
 
 # mps is a list with complex valued jnp.ndarray of shape (left_bond, dim, right_bond),
 # where dim is a local dimension, left and right bonds take values 1, 2, ...
-#                               1
-#                               |       
-# MPO indices enumearion:   0 --O-- 2, MPS indices enumeration:  0 --O-- 2. 
-#                               |                                    |
-#                               3                                    1
+#                                1
+#                                |
+# MPO indices enumearion:   0 -- O -- 2, MPS indices enumeration:  0 -- O -- 2.
+#                                |                                      |
+#                                3                                      1
+
 
 mps = List[jnp.ndarray]  # mps dtype (list with complex valued 3-rank tensors)
 mpo = List[jnp.ndarray]  # mpo dtype (list with complex valued 4-rank tensors)
+
 
 def set_to_forward_canonical(inp_mps: mps) -> jnp.ndarray:
     """This function sets mps to the forward (left) canonical form.
@@ -62,13 +64,15 @@ def set_to_backward_canonical(inp_mps: mps) -> jnp.ndarray:
     return lognorm
 
 
-def dot_prod(inp_mps1: mps, inp_mps2: mps) -> jnp.ndarray:
+def dot_prod(inp_mps1: mps, inp_mps2: mps, use_conj: bool = True) -> jnp.ndarray:
     """This function calculates the dot product of two mps
     and return logarithm of the result.
 
     Args:
         inp_mps1 (mps): [first input mps]
         inp_mps2 (mps): [sceond input mps]
+        use_conj (bool): [flag showing whether to use complex conjugate of the second
+            argument or not]
 
     Returns:
         jnp.ndarray: [logorithm of the dot product]
@@ -77,7 +81,8 @@ def dot_prod(inp_mps1: mps, inp_mps2: mps) -> jnp.ndarray:
     def iter(carry, kers):
         lognorm, state = carry
         ker1, ker2 = kers
-        ker2 = ker2.conj()
+        if use_conj:
+            ker2 = ker2.conj()
         state = jnp.tensordot(ker1, state, axes=1)
         state = jnp.tensordot(state, ker2, axes=[[1, 2], [1, 2]])
         norm = jnp.trace(state)
@@ -126,16 +131,20 @@ def truncate_very_last_edge_backward_canonical(inp_mps: mps, eps: Union[float, j
     inp_mps[0] = jnp.sqrt(s)[:, jnp.newaxis, jnp.newaxis] * vh
 
 
-def mpo_mps_product(inp_mpo: mpo, inp_mps: mps) -> None:
+def mpo_mps_product(inp_mpo: mpo, inp_mps: mps, reverse: bool = False) -> None:
     """This function compute mpo mps product (tensorized matvec).
     It acts inplace updating mps kernels in order to save memory.
 
     Args:
         inp_mpo (mpo): [input mp0]
         inp_mps (mps): [input mps]
+        reverse (bool): [flag showing whether to use "matves" of "vecmat (reverse)"]
     """
 
     for i, (mpo_ker, mps_ker) in enumerate(zip(inp_mpo, inp_mps)):
         mpo_left_bond, _, mpo_right_bond, _ = mpo_ker.shape
-        mps_left_bond, _, mps_right_bond = mps.shape
-        inp_mps[i] = jnp.einsum('ijkl,mjn->milnk', mpo_ker, mps_ker).reshape((mpo_left_bond * mps_left_bond, -1, mpo_right_bond * mps_right_bond))
+        mps_left_bond, _, mps_right_bond = mps_ker.shape
+        if reverse:
+            inp_mps[i] = jnp.einsum('ilkj,mjn->imlkn', mpo_ker, mps_ker).reshape((mpo_left_bond * mps_left_bond, -1, mpo_right_bond * mps_right_bond))
+        else:
+            inp_mps[i] = jnp.einsum('ijkl,mjn->milnk', mpo_ker, mps_ker).reshape((mpo_left_bond * mps_left_bond, -1, mpo_right_bond * mps_right_bond))

@@ -1,8 +1,6 @@
 from jax import numpy as jnp
 from jax import jit, vmap
 from jax.lax import scan
-import chex
-from chex import dataclass
 from functools import partial
 from collections import namedtuple
 
