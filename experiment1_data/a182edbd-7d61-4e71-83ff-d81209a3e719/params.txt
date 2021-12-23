@@ -1,1 +1,0 @@
-{"N": 50, "n": 11, "tau": 0.15, "hx": 0.2, "hy": 0.2, "hz": 0.2, "Jx": 0.9, "Jy": 1, "Jz": 1.1, "system_qubit": 0, "system_state": [1, 0], "env_single_spin_state": [0, 1], "eps": 0.01, "full_truncation": true, "truncate_when": 512}

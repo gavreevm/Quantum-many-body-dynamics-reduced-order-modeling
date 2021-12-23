@@ -1,10 +1,11 @@
 from jax import numpy as jnp
+from jax import vmap
 
 from simulators.reduced_order_simulator_utils import _layer2lattice, _reduce_from_top, _reduce_from_bottom, _build
 from typing import List
 
 from functools import reduce
-
+from simulators.exact_simulator_utils import M_inv, complete_system
 
 ReducedOrderModel = List[jnp.ndarray]
 
@@ -112,3 +113,22 @@ class ReducedOrderSimulator:
 
         _, rhos = reduce(iter, zip(reversed(reduced_order_model), control_gates), (init_state.reshape((1, 2, 1)), []))
         return jnp.concatenate(rhos, axis=0)
+
+    # TODO: tests for this method
+    def compute_quantum_channels(self,
+                                 reduced_order_model: ReducedOrderModel,
+                                 control_gates: jnp.ndarray) -> jnp.ndarray:
+        """[This method computes quantum channels within reduced-order model]
+
+        Args:
+            reduced_order_model (ReducedOrderModel): [reduced-order model]
+            control_gates (conplex valued jnp.ndarray of shape (discrete_time, 2, 2)): [description]
+
+        Returns:
+            complex valued jnp.ndarray of shape (discrete_time, 2, 2, 2, 2): [quantum channels]
+        """
+
+        fun = vmap(self.compute_dynamics, in_axes=(None, None, 0), out_axes=-1)
+        phi = fun(reduced_order_model, control_gates, complete_system)
+        phi = jnp.tensordot(phi, M_inv, axes=1)
+        return phi
