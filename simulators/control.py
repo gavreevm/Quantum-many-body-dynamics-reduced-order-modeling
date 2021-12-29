@@ -1,9 +1,11 @@
 import jax.numpy as jnp
 from jax import lax, value_and_grad, jit, random
-from typing import Callable, Iterable, Tuple
+from typing import Callable, Iterable, Tuple, Any
 from functools import partial
 
 from simulators.control_utils import init_optimizer_state, run_step
+
+PyTree = Any
 
 @partial(jit, static_argnums=0)
 def _opt_epoch(loss_and_grad, epoch_size, state, constant_params, control_signal):
@@ -16,8 +18,8 @@ def _opt_epoch(loss_and_grad, epoch_size, state, constant_params, control_signal
     return loss_value, state, control_signal
 
 
-def optimize(loss_fn: Callable[[Iterable[jnp.ndarray], jnp.ndarray], jnp.ndarray],
-             constant_params: Iterable[jnp.ndarray],
+def optimize(loss_fn: Callable[[PyTree, jnp.ndarray], jnp.ndarray],
+             constant_params: PyTree,
              control_signal: jnp.ndarray,
              number_of_epoch: int,
              epoch_size: int,
@@ -28,8 +30,8 @@ def optimize(loss_fn: Callable[[Iterable[jnp.ndarray], jnp.ndarray], jnp.ndarray
     """[This function perform control signal optimization via Riemannian AMSGrad optimizer.]
 
     Args:
-        loss_fn (Callable[[Iterable[jnp.ndarray], jnp.ndarray], jnp.ndarray]): [loss function]
-        constant_params (Iterable[jnp.ndarray]): [constant params]
+        loss_fn (Callable[[PyTree, jnp.ndarray], jnp.ndarray]): [loss function]
+        constant_params (PyTree): [constant params]
         control_signal (complex valued jnp.ndarray of shape (..., n, m)): [control signal]
         number_of_epoch (int): [number of optimization epoches]
         epoch_size (int): [size of optimization epoch]

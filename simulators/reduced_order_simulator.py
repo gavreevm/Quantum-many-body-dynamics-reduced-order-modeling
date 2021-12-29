@@ -1,13 +1,14 @@
 from jax import numpy as jnp
-from jax import vmap
+from jax import lax, vmap
 
 from simulators.reduced_order_simulator_utils import _layer2lattice, _reduce_from_top, _reduce_from_bottom, _build
-from typing import List
+from typing import List, Tuple, Union
 
 from functools import reduce
 from simulators.exact_simulator_utils import M_inv, complete_system
 
-ReducedOrderModel = List[jnp.ndarray]
+ReducedOrderModel = List[Tuple[jnp.ndarray]]
+PreprocessedReducedOrderModel = Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]
 
 
 class ReducedOrderSimulator:
@@ -83,52 +84,106 @@ class ReducedOrderSimulator:
                              truncate_when=truncate_when,
                              eps=eps)
             _build(lattice)
-        return lattice[0]
+        return list(zip(*lattice))
 
-    def compute_dynamics(self,
-                         reduced_order_model: ReducedOrderModel,
-                         control_gates: jnp.ndarray,
-                         init_state: jnp.ndarray) -> jnp.ndarray:
-        """[This method runs simulation of a system dynamics within reduced-order model]
+    #TODO: write tests for this method
+    def preprocess_reduced_order_model(self,
+                                       reduced_order_model: ReducedOrderModel) -> PreprocessedReducedOrderModel:
+        """[This method preprocess reduced-order model to make it suitable for fast jit.]
 
         Args:
             reduced_order_model (ReducedOrderModel): [reduced-order model]
+
+        Returns:
+            PreprocessedReducedOrderModel: [preprocessed reduced-order model]
+        """
+
+        top_left_max_dim, _, top_right_max_dim = reduced_order_model[0][0].shape
+        bottom_left_max_dim, _, bottom_right_max_dim = reduced_order_model[0][-1].shape
+        top_tensors = []
+        mid_tensors = []
+        bottom_tensors = []
+        for ker_top, ker_mid, ker_bottom in reduced_order_model:
+            top_left_dim, _, top_right_dim = ker_top.shape
+            bottom_left_dim, _, bottom_right_dim = ker_bottom.shape
+            top_tensors.append(jnp.pad(ker_top, ((0, top_left_max_dim - top_left_dim), (0, 0), (0, top_right_max_dim - top_right_dim)))[jnp.newaxis])
+            mid_tensors.append(ker_mid[jnp.newaxis])
+            bottom_tensors.append(jnp.pad(ker_bottom, ((0, bottom_left_max_dim - bottom_left_dim), (0, 0), (0, bottom_right_max_dim - bottom_right_dim)))[jnp.newaxis])
+        return jnp.concatenate(top_tensors, axis=0), jnp.concatenate(mid_tensors, axis=0), jnp.concatenate(bottom_tensors, axis=0)
+
+    # TODO: tests for the fast_jit == True
+    def compute_dynamics(self,
+                         reduced_order_model: Union[ReducedOrderModel, PreprocessedReducedOrderModel],
+                         control_gates: jnp.ndarray,
+                         init_state: jnp.ndarray,
+                         fast_jit: bool = False) -> jnp.ndarray:
+        """[This method runs simulation of a system dynamics within reduced-order model]
+
+        Args:
+            reduced_order_model (Union[ReducedOrderModel, PreprocessedReducedOrderModel]):
+                [reduced-order model]
             control_gates (conplex valued jnp.ndarray of shape (discrete_time, 2, 2)): [description]
             init_state (complex valued jnp.ndarray of shape (2,)): [initial state of a system]
+            fast_jit (bool) [flag showing whether to use preprocessed reduced-order model for fast
+                jit or not]. Defaults to False.
 
         Returns:
             complex valued jnp.ndarray of shape (discrete_time, 2, 2): [dynamics of density matrices]
         """
 
-        def iter(carry, control_and_gate):
-            state, rhos = carry
-            gate, control = control_and_gate
-            state = jnp.tensordot(gate, state, axes=3)
-            state = jnp.tensordot(control, state, axes=[[1], [1]])
-            state = state.transpose((1, 0, 2))
-            rho = jnp.tensordot(state, state.conj(), axes=[[0, 2], [0, 2]])
-            rho = rho / jnp.trace(rho)
-            rhos = rhos + [rho[jnp.newaxis]]
-            return state, rhos
+        if fast_jit:
+            _, top_dim, _, _ = reduced_order_model[0].shape
+            _, bottom_dim, _, _ = reduced_order_model[-1].shape
+            init_state = init_state[jnp.newaxis, :, jnp.newaxis]
+            init_state = jnp.pad(init_state, ((0, top_dim-1), (0, 0), (0, bottom_dim-1)))
+            def iter(state, control_and_gate):
+                (top, mid, bottom), control = control_and_gate
+                state = jnp.tensordot(top, state, axes=1)
+                state = jnp.tensordot(mid, state, axes=[[1, 2], [1, 2]])
+                state = jnp.tensordot(bottom, state, axes=[[1, 2], [1, 3]])
+                state = jnp.tensordot(control, state, axes=[[1], [1]])
+                state = state.transpose((2, 0, 1))
+                state /= jnp.linalg.norm(state)
+                rho = jnp.tensordot(state, state.conj(), axes=[[0, 2], [0, 2]])
+                return state, rho
+            _, rhos = lax.scan(iter, init_state, (reduced_order_model, control_gates[::-1]), reverse=True)
+            return rhos[::-1]
+        else:
+            def iter(carry, control_and_gate):
+                state, rhos = carry
+                (top, mid, bottom), control = control_and_gate
+                state = jnp.tensordot(top, state, axes=1)
+                state = jnp.tensordot(mid, state, axes=[[1, 2], [1, 2]])
+                state = jnp.tensordot(bottom, state, axes=[[1, 2], [1, 3]])
+                state = jnp.tensordot(control, state, axes=[[1], [1]])
+                state = state.transpose((2, 0, 1))
+                state /= jnp.linalg.norm(state)
+                rho = jnp.tensordot(state, state.conj(), axes=[[0, 2], [0, 2]])
+                rhos = rhos + [rho[jnp.newaxis]]
+                return state, rhos
 
-        _, rhos = reduce(iter, zip(reversed(reduced_order_model), control_gates), (init_state.reshape((1, 2, 1)), []))
-        return jnp.concatenate(rhos, axis=0)
+            _, rhos = reduce(iter, zip(reversed(reduced_order_model), control_gates), (init_state.reshape((1, 2, 1)), []))
+            return jnp.concatenate(rhos, axis=0)
 
     # TODO: tests for this method
     def compute_quantum_channels(self,
                                  reduced_order_model: ReducedOrderModel,
-                                 control_gates: jnp.ndarray) -> jnp.ndarray:
+                                 control_gates: jnp.ndarray,
+                                 fast_jit: bool = False) -> jnp.ndarray:
         """[This method computes quantum channels within reduced-order model]
 
         Args:
-            reduced_order_model (ReducedOrderModel): [reduced-order model]
+            reduced_order_model (Union[ReducedOrderModel, PreprocessedReducedOrderModel]): 
+                [reduced-order model]
             control_gates (conplex valued jnp.ndarray of shape (discrete_time, 2, 2)): [description]
+            fast_jit (bool) [flag showing whether to use preprocessed reduced-order model for fast
+                jit or not]. Defaults to False.
 
         Returns:
             complex valued jnp.ndarray of shape (discrete_time, 2, 2, 2, 2): [quantum channels]
         """
 
-        fun = vmap(self.compute_dynamics, in_axes=(None, None, 0), out_axes=-1)
-        phi = fun(reduced_order_model, control_gates, complete_system)
+        fun = vmap(self.compute_dynamics, in_axes=(None, None, 0, None), out_axes=-1)
+        phi = fun(reduced_order_model, control_gates, complete_system, fast_jit)
         phi = jnp.tensordot(phi, M_inv, axes=1)
         return phi

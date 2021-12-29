@@ -135,26 +135,19 @@ def _reduce_from_bottom(lattice: List[mps],
             truncate_forward_canonical(lattice[-1], eps)
 
 
-def _build(reduced_lattice: Union[mps, mpo]) -> None:
-    """[This dunction builds reduced-order out of its pieces.]
+def _build(reduced_lattice: List[Union[mps, mpo]]) -> None:
+    """[This function set lattice after reduction to a standardized form.]
 
     Args:
-        reduced_lattice (Union[mps, mpo]): [lattice after reduction]
+        reduced_lattice (List[Union[mps, mpo]]): [lattice after reduction]
     """
 
-    if len(reduced_lattice) == 3:
-        for i, (top_ker, mid_ker, bottom_ker) in enumerate(zip(*reduced_lattice)):
-            reduced_lattice[1][i] = jnp.einsum('ijk,ljmn,onp->ilokmp', top_ker, mid_ker, bottom_ker)
-        reduced_lattice.pop(0)
-        reduced_lattice.pop(-1)
-    else:
+    if len(reduced_lattice) < 3:
         if reduced_lattice[0][-1].shape[-1] == 2:
-            for i, (top_ker, bottom_ker) in enumerate(zip(*reduced_lattice)):
-                reduced_lattice[0][i] = jnp.einsum('ijk,ljn->ilkn', top_ker, bottom_ker)
-                reduced_lattice[0][i] = reduced_lattice[0][i][jnp.newaxis, :, :, jnp.newaxis]
-            reduced_lattice.pop(-1)
+            for i, ker in enumerate(reduced_lattice[0]):
+                reduced_lattice[0][i] = ker[:, jnp.newaxis].transpose((0, 1, 3, 2))
+            reduced_lattice.insert(0, len(reduced_lattice[0]) * [jnp.ones((1, 1, 1))])
         else:
-            for i, (top_ker, bottom_ker) in enumerate(zip(*reduced_lattice)):
-                reduced_lattice[-1][i] = jnp.einsum('ijk,ljn->ilkn', top_ker, bottom_ker)
-                reduced_lattice[-1][i] = reduced_lattice[-1][i][:, :, jnp.newaxis, :, :, jnp.newaxis]
-            reduced_lattice.pop(0)
+            for i, ker in enumerate(reduced_lattice[-1]):
+                reduced_lattice[-1][i] = ker[..., jnp.newaxis]
+            reduced_lattice.append(len(reduced_lattice[0]) * [jnp.ones((1, 1, 1))])

@@ -11,9 +11,11 @@ from simulators.exact_simulator import ExactSimulator
 from simulators.reduced_order_simulator import ReducedOrderSimulator
 from simulators.control import optimize, random_isometric
 from simulators.exact_simulator_utils import sigma
+from simulators.exact_simulator_utils import complete_system
 
-# This file performs simulation of the system using both the exact
-# simulator and the reduced-order simulator with zero control signal.
+
+# This file performs simulation of the information transition from the
+# source qubit to the system qubit
 
 # ------------------ Description of model parameters ------------------------ #
 # N --------------------- number of discrete time steps
@@ -22,11 +24,13 @@ from simulators.exact_simulator_utils import sigma
 # hi -------------------- i-th component of the external magnetic field (i \in {x, y, z})
 # Ji -------------------- i-th component of the coupling (i \in {x, y, z})
 # system_qubit ---------- the number of the system spin (ranges from 0, to n-1)
-# system_state ---------- psi vector of the system spin
+# source_qubit ---------- the number of the source spin (ranges from 0, to n-1)
 # env_single_spin_state - psi vector of each spin in the environment
 # eps ------------------- accuracy of truncation
 # full_truncation ------- flag showing whether to use full truncation or not
+# truncate_when --------- the bond dim. value threshold
 # PRNGKey --------------- jax PRNGKey
+
 
 set_of_params = {
     'N' : [50],
@@ -38,8 +42,8 @@ set_of_params = {
     'Jx' : [0.9],
     'Jy' : [1],
     'Jz' : [1.1],
-    'system_qubit' : [0],
-    'system_state' : [[1, 0]],
+    'system_qubit' : [1],
+    'source_qubit' : [5],
     'env_single_spin_state' : [[0, 1]],
     'eps' : [1e-2],
     'full_truncation' : [True],
@@ -76,124 +80,114 @@ def run_experiment(set_of_params):
         gates_layer = params2gates_layer(params)
         save_data(gates_layer, dir_path + '/gates_layer.pickle')
 
-        # initial env. state for the reduced-order simulator
-        ro_env_state = (params['n'] - 1) * [jnp.array(params['env_single_spin_state'], dtype=jnp.complex64)]
-
-        # initial env. state for the exact simulator
-        ex_env_state = reduce(lambda x, y: jnp.kron(x, y), ro_env_state)
+        # initial env. states for the reduced-order simulator
+        ro_env_state0 = (params['n'] - 2) * [jnp.array(params['env_single_spin_state'], dtype=jnp.complex64)]
+        ro_env_state0.insert(params['source_qubit']-1, complete_system[0])
+        ro_env_state1 = (params['n'] - 2) * [jnp.array(params['env_single_spin_state'], dtype=jnp.complex64)]
+        ro_env_state1.insert(params['source_qubit']-1, complete_system[1])
+        ro_env_state2 = (params['n'] - 2) * [jnp.array(params['env_single_spin_state'], dtype=jnp.complex64)]
+        ro_env_state2.insert(params['source_qubit']-1, complete_system[2])
+        ro_env_state3 = (params['n'] - 2) * [jnp.array(params['env_single_spin_state'], dtype=jnp.complex64)]
+        ro_env_state3.insert(params['source_qubit']-1, complete_system[3])
 
         # system state
-        system_state = jnp.array(params['system_state'], dtype=jnp.complex64)
+        system_state = jnp.array(params['env_single_spin_state'], dtype=jnp.complex64)
 
-        # zero control
-        trivial_control_gates = jnp.tile(jnp.eye(2, dtype=jnp.complex64)[jnp.newaxis], (params['N'], 1, 1))
+        # initial env. state for the exact simulator
+        ex_env_state = reduce(lambda x, y: jnp.kron(x, y), (params['n'] - 1) * [system_state])
+
+        # initial control seq.
         control_gates = random_isometric(key, (params['N'], 2, 2))
-
-        # EXACT DYNAMICS SIMULATION
-        ex_sim = ExactSimulator()
-        ex_sim_state = ex_sim.initialize(params['n'],
-                                        params['system_qubit'],
-                                        params['system_qubit'],
-                                        params['N'])
-        zero_control_quantum_channels = ex_sim.compute_quantum_channels(ex_sim_state,
-                                                                        ex_env_state,
-                                                                        gates_layer,
-                                                                        trivial_control_gates)
-        zero_control_exact_density_matrices = jnp.einsum('ijklmn,m,n->ijkl', zero_control_quantum_channels, system_state, system_state.conj())
-        zero_control_mutual_information = mutual_information(zero_control_quantum_channels)
-        save_data(zero_control_mutual_information, dir_path + '/zero_control_mutual_information.pickle')
-        save_data(zero_control_quantum_channels, dir_path + '/zero_control_quantum_channels.pickle')
-        save_data(zero_control_exact_density_matrices, dir_path + '/zero_control_exact_density_matrices.pickle')
 
         # REDUCED_ORDER MODEL BASED DYNAMICS SIMULATION
         ro_sim = ReducedOrderSimulator()
-        ro_model = ro_sim.build_reduced_order_model(params['system_qubit'],
-                                                    params['system_qubit'],
-                                                    params['N'],
-                                                    ro_env_state,
-                                                    gates_layer,
-                                                    params['full_truncation'],
-                                                    params['truncate_when'],
-                                                    params['eps'])
-        save_data(ro_model, dir_path + '/ro_model.pickle')
-        zero_control_ro_model_based_density_matrices = ro_sim.compute_dynamics(ro_model, trivial_control_gates, system_state)
-        save_data(zero_control_ro_model_based_density_matrices, dir_path + '/zero_control_ro_based_density_matrices.pickle')
+        ro_model0 = ro_sim.build_reduced_order_model(params['system_qubit'],
+                                                     params['system_qubit'],
+                                                     params['N'],
+                                                     ro_env_state0,
+                                                     gates_layer,
+                                                     params['full_truncation'],
+                                                     params['truncate_when'],
+                                                     params['eps'])
+        ro_model1 = ro_sim.build_reduced_order_model(params['system_qubit'],
+                                                     params['system_qubit'],
+                                                     params['N'],
+                                                     ro_env_state1,
+                                                     gates_layer,
+                                                     params['full_truncation'],
+                                                     params['truncate_when'],
+                                                     params['eps'])
+        ro_model2 = ro_sim.build_reduced_order_model(params['system_qubit'],
+                                                     params['system_qubit'],
+                                                     params['N'],
+                                                     ro_env_state2,
+                                                     gates_layer,
+                                                     params['full_truncation'],
+                                                     params['truncate_when'],
+                                                     params['eps'])
+        ro_model3 = ro_sim.build_reduced_order_model(params['system_qubit'],
+                                                     params['system_qubit'],
+                                                     params['N'],
+                                                     ro_env_state3,
+                                                     gates_layer,
+                                                     params['full_truncation'],
+                                                     params['truncate_when'],
+                                                     params['eps'])
+        ro_models = [
+            ro_model0,
+            ro_model1,
+            ro_model2,
+            ro_model3
+        ]
+        save_data(ro_models, dir_path + '/ro_models.pickle')
 
         # CONTROL SIGNAL OPTIMIZATION
-        def loss_fn(ro_model, control_gates):
-            half_N = params['N'] // 2
-            phis = ro_sim.compute_quantum_channels(ro_model, control_gates)
-            id_channel = jnp.eye(4).reshape((2, 2, 2, 2))
-            complete_depolarizing = 0.5 * jnp.tensordot(jnp.eye(2), jnp.eye(2), axes=0)
-            return jnp.linalg.norm(id_channel - phis[-1]) ** 2 + jnp.linalg.norm(complete_depolarizing - phis[half_N]) ** 2
-        control_gates, learning_curve = optimize(loss_fn, ro_model, control_gates, 10, 2000, 0.02)
+        def loss_fn(ro_models, control_gates):
+            ro_model0, ro_model1, ro_model2, ro_model3 = ro_models
+            rho0 = ro_sim.compute_dynamics(ro_model0, control_gates, system_state)[-1]
+            rho1 = ro_sim.compute_dynamics(ro_model1, control_gates, system_state)[-1]
+            rho2 = ro_sim.compute_dynamics(ro_model2, control_gates, system_state)[-1]
+            rho3 = ro_sim.compute_dynamics(ro_model3, control_gates, system_state)[-1]
+            rho_inp0 = jnp.tensordot(complete_system[0], complete_system[0].conj(), axes=0)
+            rho_inp1 = jnp.tensordot(complete_system[1], complete_system[1].conj(), axes=0)
+            rho_inp2 = jnp.tensordot(complete_system[2], complete_system[2].conj(), axes=0)
+            rho_inp3 = jnp.tensordot(complete_system[3], complete_system[3].conj(), axes=0)
+            loss_val = (
+                jnp.linalg.norm(rho0 - rho_inp0) ** 2 +
+                jnp.linalg.norm(rho1 - rho_inp1) ** 2 +
+                jnp.linalg.norm(rho2 - rho_inp2) ** 2 +
+                jnp.linalg.norm(rho3 - rho_inp3) ** 2
+            )
+            return loss_val
+
+
+        control_gates, learning_curve = optimize(loss_fn, ro_models, control_gates, 10, 2000, 0.01)
         save_data(control_gates, dir_path + '/control_gates.pickle')
         save_data(learning_curve, dir_path + '/learning_curve.pickle')
 
-        # EXACT DYNAMICS SIMULATION WITH CONTROL
+        # STATE TRANSFER EXACT SIMULATION
+        ex_sim = ExactSimulator()
+        ex_sim_state = ex_sim.initialize(params['n'],
+                                         params['source_qubit'],
+                                         params['system_qubit'],
+                                         params['N'])
         controlled_quantum_channels = ex_sim.compute_quantum_channels(ex_sim_state,
-                                                                     ex_env_state,
-                                                                     gates_layer,
-                                                                     control_gates)
+                                                                      ex_env_state,
+                                                                      gates_layer,
+                                                                      control_gates)
         controlled_mutual_information = mutual_information(controlled_quantum_channels)
         controlled_exact_density_matrices = jnp.einsum('ijklmn,m,n->ijkl', controlled_quantum_channels, system_state, system_state.conj())
         save_data(controlled_quantum_channels, dir_path + '/controlled_quantum_channels.pickle')
         save_data(controlled_exact_density_matrices, dir_path + '/controlled_exact_density_matrices.pickle')
         save_data(controlled_mutual_information, dir_path + '/controlled_mutual_information.pickle')
 
-        # REDUCED_ORDER MODEL BASED DYNAMICS SIMULATION WITH CONTROL
-        controlled_ro_model_based_density_matrices = ro_sim.compute_dynamics(ro_model, control_gates, system_state)
-        save_data(controlled_ro_model_based_density_matrices, dir_path + '/controlled_ro_based_density_matrices.pickle')
-
-
         #SIMPLE PLOTTING
-
-        zero_control_ro_bloch_vectors = jnp.tensordot(zero_control_ro_model_based_density_matrices, sigma, axes=[[1, 2], [2, 1]])
-        zero_control_exact_bloch_vectors = jnp.tensordot(zero_control_exact_density_matrices[:, params['system_qubit']], sigma, axes=[[1, 2], [2, 1]])
-        controlled_ro_bloch_vectors = jnp.tensordot(controlled_ro_model_based_density_matrices, sigma, axes=[[1, 2], [2, 1]])
-        controlled_exact_bloch_vectors = jnp.tensordot(controlled_exact_density_matrices[:, params['system_qubit']], sigma, axes=[[1, 2], [2, 1]])
-
-        plt.figure()
-        plt.plot(zero_control_ro_bloch_vectors[:, 0], 'r')
-        plt.plot(zero_control_ro_bloch_vectors[:, 1], 'b')
-        plt.plot(zero_control_ro_bloch_vectors[:, 2], 'k')
-        plt.plot(zero_control_exact_bloch_vectors[:, 0], '*r')
-        plt.plot(zero_control_exact_bloch_vectors[:, 1], 'ob')
-        plt.plot(zero_control_exact_bloch_vectors[:, 2], 'xk')
-        plt.legend(['exact x', 'exact y', 'exact z', 'ro x', 'ro y', 'ro z'])
-        plt.ylabel('Amplitude')
-        plt.xlabel('N')
-        plt.savefig(dir_path + '/zero_control_dynamics.pdf')
-
-        plt.figure()
-        plt.plot(controlled_ro_bloch_vectors[:, 0], 'r')
-        plt.plot(controlled_ro_bloch_vectors[:, 1], 'b')
-        plt.plot(controlled_ro_bloch_vectors[:, 2], 'k')
-        plt.plot(controlled_exact_bloch_vectors[:, 0], '*r')
-        plt.plot(controlled_exact_bloch_vectors[:, 1], 'ob')
-        plt.plot(controlled_exact_bloch_vectors[:, 2], 'xk')
-        plt.legend(['exact x', 'exact y', 'exact z', 'ro x', 'ro y', 'ro z'])
-        plt.ylabel('Amplitude')
-        plt.xlabel('N')
-        plt.savefig(dir_path + '/controlled_dynamics.pdf')
-
-        plt.figure()
-        plt.plot([ker.shape[0] * ker.shape[2] for ker in reversed(ro_model)])
-        plt.ylabel('Environment dimension')
-        plt.xlabel('N')
-        plt.savefig(dir_path + '/env_dimension.pdf')
 
         plt.figure()
         plt.plot(learning_curve, 'b')
         plt.ylabel('loss_value')
         plt.xlabel('epoch_number')
         plt.savefig(dir_path + '/learning_curve.pdf')
-
-        plt.figure()
-        plt.imshow(zero_control_mutual_information, cmap='inferno')
-        plt.xlabel('spin_number')
-        plt.ylabel('N')
-        plt.savefig(dir_path + '/zero_control_mutual_information.pdf')
 
         plt.figure()
         plt.imshow(controlled_mutual_information, cmap='inferno')
