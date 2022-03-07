@@ -2,11 +2,9 @@ from jax import numpy as jnp
 from jax import jit, vmap
 from jax.lax import scan
 from functools import partial
-from collections import namedtuple
 
 from simulators.exact_simulator_utils import _get_local_rho, _apply_layer, _apply_control_signal, complete_system, M_inv
-
-SimulatorState = namedtuple("SimulatorState", ["number_of_qubits", "system_qubit_number", "controlled_qubit_number", "iscrete_time"])
+from simulators.dataclasses import ExactSimulatorState
 
 
 class ExactSimulator:
@@ -20,7 +18,7 @@ class ExactSimulator:
                    number_of_qubits: int,
                    system_qubit_number: int,
                    controlled_qubit_number: int,
-                   discrete_time: int) -> SimulatorState:
+                   discrete_time: int) -> ExactSimulatorState:
         """[This method initializes state of the simulator.]
 
         Args:
@@ -30,10 +28,10 @@ class ExactSimulator:
             discrete_time (int): [number of time steps]
 
         Returns:
-            SimulatorState: [state of the simulator]
+            ExactSimulatorState: [state of the simulator]
         """
 
-        state = SimulatorState(
+        state = ExactSimulatorState(
             number_of_qubits,
             system_qubit_number,
             controlled_qubit_number,
@@ -43,7 +41,7 @@ class ExactSimulator:
 
     @partial(jit, static_argnums=(0, 1))
     def compute_dynamics_of_density_matrices(self,
-                                             sim_state: SimulatorState,
+                                             sim_state: ExactSimulatorState,
                                              initial_system_state: jnp.ndarray,
                                              initial_environment_state: jnp.ndarray,
                                              gates_layer: jnp.ndarray,
@@ -52,7 +50,7 @@ class ExactSimulator:
         all qubits under control.]
 
         Args:
-            sim_state (SimulatorState): [state of the simulator]
+            sim_state (ExactSimulatorState): [state of the simulator]
             initial_system_state (complex valued jnp.ndarray of shape (2,))
                 [state of the target qubit]
             initial_environment_state (complex valued jnp.ndarray of shape
@@ -84,7 +82,7 @@ class ExactSimulator:
 
     @partial(jit, static_argnums=(0, 1))
     def compute_quantum_channels(self,
-                                 sim_state: SimulatorState,
+                                 sim_state: ExactSimulatorState,
                                  initial_environment_state: jnp.ndarray,
                                  gates_layer: jnp.ndarray,
                                  control_gates: jnp.ndarray) -> jnp.ndarray:
@@ -92,7 +90,7 @@ class ExactSimulator:
         a particular qubit to the state of all qubits at any discrete time moment.]
 
         Args:
-            sim_state (SimulatorState): [state of the simulator]
+            sim_state (ExactSimulatorState): [state of the simulator]
             initial_environment_state (complex valued jnp.ndarray of shape
                  (2 ** (number of qubits-1),)): [initial state of the environment]
             gates_layer (complex valued jnp.ndarray of shape (number of qubits-1, 4, 4)):

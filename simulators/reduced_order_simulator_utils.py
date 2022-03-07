@@ -1,9 +1,11 @@
 from jax import numpy as jnp
 from jax import vmap
 from simulators.mps import mps, mpo, truncate_forward_canonical, truncate_very_last_edge_backward_canonical, set_to_backward_canonical, set_to_forward_canonical, mpo_mps_product
-from typing import Union, List
+from typing import Union, List, Tuple
 from simulators.mps_utils import _set_rank
+from simulators.dataclasses import ROMDynamicsGenerator
 
+ReducedOrderModel = List[ROMDynamicsGenerator]
 
 def _layer2lattice(gates_layer: jnp.ndarray, discrete_time: int) -> List[Union[mps, mpo]]:
     """[This function returns lattice tensor network from a layer of unitary gates.]
@@ -151,3 +153,24 @@ def _build(reduced_lattice: List[Union[mps, mpo]]) -> None:
             for i, ker in enumerate(reduced_lattice[-1]):
                 reduced_lattice[-1][i] = ker[..., jnp.newaxis]
             reduced_lattice.append(len(reduced_lattice[0]) * [jnp.ones((1, 1, 1))])
+
+
+# TODO: add tests to this function
+def _max_bond_dim(reduced_order_model: ReducedOrderModel) -> Tuple[int, int]:
+    """This function returns max bond dimension for upper and lower parts of
+    reduced order model.
+
+    Args:
+        reduced_order_model (ReducedOrderModel): Reduced order model
+
+    Returns:
+        Tuple[int, int]: Tuple with max top bond dim. and max bottom bond dim.
+    """
+
+    left_bonds_top = [kers.ker_top.shape[0] for kers in reduced_order_model]
+    right_bonds_top = [kers.ker_top.shape[2] for kers in reduced_order_model]
+    max_top = max(left_bonds_top + right_bonds_top)
+    left_bonds_bottom = [kers.ker_bottom.shape[0] for kers in reduced_order_model]
+    right_bonds_bottom = [kers.ker_bottom.shape[2] for kers in reduced_order_model]
+    max_bottom = max(left_bonds_bottom + right_bonds_bottom)
+    return (max_top, max_bottom)

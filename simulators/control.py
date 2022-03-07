@@ -10,12 +10,13 @@ PyTree = Any
 @partial(jit, static_argnums=0)
 def _opt_epoch(loss_and_grad, epoch_size, state, constant_params, control_signal):
     def iter(i, val):
-        _, state, control_signal = val
+        total_loss, state, control_signal = val
         loss_value, grad = loss_and_grad(constant_params, control_signal)
         control_signal, state = run_step(state, grad, control_signal)
-        return loss_value, state, control_signal
+        total_loss += loss_value
+        return total_loss, state, control_signal
     loss_value, state, control_signal = lax.fori_loop(0, epoch_size, iter, (jnp.array(0.), state, control_signal))
-    return loss_value, state, control_signal
+    return loss_value / epoch_size, state, control_signal
 
 
 def optimize(loss_fn: Callable[[PyTree, jnp.ndarray], jnp.ndarray],
@@ -46,10 +47,11 @@ def optimize(loss_fn: Callable[[PyTree, jnp.ndarray], jnp.ndarray],
 
     state = init_optimizer_state(control_signal, learning_rate, beta1, beta2, eps)
     loss_and_grad = value_and_grad(loss_fn, argnums=1)
-    loss_history = []
-    for _ in range(number_of_epoch):
+    loss_history = [loss_fn(constant_params, control_signal)]
+    for epoch_num in range(number_of_epoch):
         loss_value, state, control_signal = _opt_epoch(loss_and_grad, epoch_size, state, constant_params, control_signal)
         loss_history.append(loss_value)
+        print("\t Optimization epoch #{} is finished.".format(epoch_num+1))
     return control_signal, jnp.array(loss_history)
 
 

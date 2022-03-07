@@ -1,6 +1,7 @@
 from jax.config import config
 from jax.core import lattice_join
 config.update("jax_enable_x64", True)
+config.update('jax_platform_name', 'cpu')
 
 import pytest
 

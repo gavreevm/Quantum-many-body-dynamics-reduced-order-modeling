@@ -1,24 +1,26 @@
 import jax.numpy as jnp
 from jax import scipy
 from typing import Dict
-from simulators.exact_simulator_utils import sigma
 from jax import random, vmap
 
-def params2gates_layer(params: Dict) -> jnp.ndarray:
+from simulators.exact_simulator_utils import sigma
+from simulators.dataclasses import ExperimentParameters
+
+def params2gates_layer(params: ExperimentParameters) -> jnp.ndarray:
     """[This function returns a gate layer from dict
     with model parameters]
 
     Args:
-        params (Dict): [model parameters]
+        params (ExperimentParameters): [model parameters]
 
     Returns:
         complex valued jnp.ndarray of shape (n-1, 4, 4): [gates]
     """
 
-    Jx, Jy, Jz = params['Jx'], params['Jy'], params['Jz']
-    hx, hy, hz = params['hx'], params['hy'], params['hz']
-    tau = params['tau']
-    n = params['n']
+    Jx, Jy, Jz = params.Jx, params.Jy, params.Jz
+    hx, hy, hz = params.hx, params.hy, params.hz
+    tau = params.tau
+    n = params.n
 
     H_central = (Jx * jnp.tensordot(sigma[0], sigma[0], axes=0)
                 + Jy * jnp.tensordot(sigma[1], sigma[1], axes=0)
@@ -66,19 +68,19 @@ def params2gates_layer(params: Dict) -> jnp.ndarray:
     return jnp.concatenate([U_up, U_central, U_down], axis=0)
 
 
-def sample_disordered_floquet(params: Dict) -> jnp.ndarray:
+def sample_disordered_floquet(params: ExperimentParameters) -> jnp.ndarray:
     """[This function returns gate layer that corresponds to a
     particular implementation of disrodered Floquet protocol with
     TFI hamiltonian.]
 
     Args:
-        params (Dict): [parameters of a model]
+        params (ExperimentParameters): [parameters of a model]
 
     Returns:
         complex valued jnp.ndarray of shape (n-1, 4, 4): [gates]
     """
 
-    random_seed, n, hx, J = params['random_seed'], params['n'], params['hx'], params['J']
+    random_seed, n, hx, J = params.random_seed, params.n, params.hx, params.Jz
     key = random.PRNGKey(random_seed)
     hz = 2 * jnp.pi * random.uniform(key, (n,))
     uz = vmap(scipy.linalg.expm)(1j * jnp.tensordot(hz, sigma[2], axes=0))

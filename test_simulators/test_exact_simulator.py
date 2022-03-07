@@ -1,5 +1,6 @@
 from jax.config import config
 config.update("jax_enable_x64", True)
+config.update('jax_platform_name', 'cpu')
 
 from jax import numpy as jnp
 from jax.scipy.linalg import expm

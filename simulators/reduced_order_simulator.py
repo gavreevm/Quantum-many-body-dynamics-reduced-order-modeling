@@ -1,14 +1,20 @@
 from jax import numpy as jnp
 from jax import lax, vmap
-
-from simulators.reduced_order_simulator_utils import _layer2lattice, _reduce_from_top, _reduce_from_bottom, _build
-from typing import List, Tuple, Union
-
 from functools import reduce
-from simulators.exact_simulator_utils import M_inv, complete_system
+from typing import List, Union
 
-ReducedOrderModel = List[Tuple[jnp.ndarray]]
-PreprocessedReducedOrderModel = Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]
+from simulators.reduced_order_simulator_utils import (
+    _layer2lattice,
+    _reduce_from_top,
+    _reduce_from_bottom,
+    _build,
+    _max_bond_dim,
+    ReducedOrderModel,
+)
+from simulators.exact_simulator_utils import M_inv, complete_system
+from simulators.dataclasses import ROMDynamicsGenerator
+
+PreprocessedReducedOrderModel = ROMDynamicsGenerator  # vectorized one
 
 
 class ReducedOrderSimulator:
@@ -84,7 +90,7 @@ class ReducedOrderSimulator:
                              truncate_when=truncate_when,
                              eps=eps)
             _build(lattice)
-        return list(zip(*lattice))
+        return [ROMDynamicsGenerator(ker_top=ker_top, ker_mid=ker_mid, ker_bottom=ker_bottom) for ker_top, ker_mid, ker_bottom in zip(*lattice)]
 
     #TODO: write tests for this method
     def preprocess_reduced_order_model(self,
@@ -98,18 +104,21 @@ class ReducedOrderSimulator:
             PreprocessedReducedOrderModel: [preprocessed reduced-order model]
         """
 
-        top_left_max_dim, _, top_right_max_dim = reduced_order_model[0][0].shape
-        bottom_left_max_dim, _, bottom_right_max_dim = reduced_order_model[0][-1].shape
+        # top_left_max_dim, _, top_right_max_dim = reduced_order_model[0].ker_top.shape
+        # bottom_left_max_dim, _, bottom_right_max_dim = reduced_order_model[0].ker_bottom.shape
+        top_max_dim, bottom_max_dim = _max_bond_dim(reduced_order_model)
         top_tensors = []
         mid_tensors = []
         bottom_tensors = []
-        for ker_top, ker_mid, ker_bottom in reduced_order_model:
+        for rom_ker in reduced_order_model:
+            ker_top, ker_mid, ker_bottom = rom_ker.ker_top, rom_ker.ker_mid, rom_ker.ker_bottom
             top_left_dim, _, top_right_dim = ker_top.shape
             bottom_left_dim, _, bottom_right_dim = ker_bottom.shape
-            top_tensors.append(jnp.pad(ker_top, ((0, top_left_max_dim - top_left_dim), (0, 0), (0, top_right_max_dim - top_right_dim)))[jnp.newaxis])
+            top_tensors.append(jnp.pad(ker_top, ((0, top_max_dim - top_left_dim), (0, 0), (0, top_max_dim - top_right_dim)))[jnp.newaxis])
             mid_tensors.append(ker_mid[jnp.newaxis])
-            bottom_tensors.append(jnp.pad(ker_bottom, ((0, bottom_left_max_dim - bottom_left_dim), (0, 0), (0, bottom_right_max_dim - bottom_right_dim)))[jnp.newaxis])
-        return jnp.concatenate(top_tensors, axis=0), jnp.concatenate(mid_tensors, axis=0), jnp.concatenate(bottom_tensors, axis=0)
+            bottom_tensors.append(jnp.pad(ker_bottom, ((0, bottom_max_dim - bottom_left_dim), (0, 0), (0, bottom_max_dim - bottom_right_dim)))[jnp.newaxis])
+        ker_top, ker_mid, ker_bottom = jnp.concatenate(top_tensors, axis=0), jnp.concatenate(mid_tensors, axis=0), jnp.concatenate(bottom_tensors, axis=0)
+        return ROMDynamicsGenerator(ker_top=ker_top, ker_mid=ker_mid, ker_bottom=ker_bottom)
 
     # TODO: tests for the fast_jit == True
     def compute_dynamics(self,
@@ -132,12 +141,13 @@ class ReducedOrderSimulator:
         """
 
         if fast_jit:
-            _, top_dim, _, _ = reduced_order_model[0].shape
-            _, bottom_dim, _, _ = reduced_order_model[-1].shape
+            _, top_dim, _, _ = reduced_order_model.ker_top.shape
+            _, bottom_dim, _, _ = reduced_order_model.ker_bottom.shape
             init_state = init_state[jnp.newaxis, :, jnp.newaxis]
             init_state = jnp.pad(init_state, ((0, top_dim-1), (0, 0), (0, bottom_dim-1)))
             def iter(state, control_and_gate):
-                (top, mid, bottom), control = control_and_gate
+                rom, control = control_and_gate
+                top, mid, bottom = rom.ker_top, rom.ker_mid, rom.ker_bottom
                 state = jnp.tensordot(top, state, axes=1)
                 state = jnp.tensordot(mid, state, axes=[[1, 2], [1, 2]])
                 state = jnp.tensordot(bottom, state, axes=[[1, 2], [1, 3]])
@@ -151,7 +161,8 @@ class ReducedOrderSimulator:
         else:
             def iter(carry, control_and_gate):
                 state, rhos = carry
-                (top, mid, bottom), control = control_and_gate
+                rom, control = control_and_gate
+                top, mid, bottom = rom.ker_top, rom.ker_mid, rom.ker_bottom
                 state = jnp.tensordot(top, state, axes=1)
                 state = jnp.tensordot(mid, state, axes=[[1, 2], [1, 2]])
                 state = jnp.tensordot(bottom, state, axes=[[1, 2], [1, 3]])

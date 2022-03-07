@@ -1,0 +1,6 @@
+exec(open("experiment3.py").read())
+exec(open("plotting_experiment3.py").read())
+exec(open("experiment3.py").read())
+exec(open("plotting_experiment3.py").read())
+exec(open("experiment3.py").read())
+exec(open("plotting_experiment3.py").read())
