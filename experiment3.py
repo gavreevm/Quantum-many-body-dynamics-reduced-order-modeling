@@ -52,29 +52,29 @@ from experiments_utils import (
 
 # experiment parameters
 set_of_params = ExperimentParameters(
-    N = (151,),
-    n = (21,),
-    tau = (None,),  # this parameter is not active in this experiment
-    hx = (0.2,),
-    hy = (None,),  # this parameter is not active in this experiment
-    hz = (None,),  # this parameter is not active in this experiment
-    Jx = (None,),  # this parameter is not active in this experiment
-    Jy = (None,),  # this parameter is not active in this experiment
-    Jz = (0.2,),
-    system_qubit = (0,),
-    source_qubit = (None,),  # this parameter is not active in this experiment
-    system_state = ([1, 0],),
-    env_single_spin_state = ([0, 1],),
-    eps = (5e-3,),
-    startN = (50,),
-    stopN = (101,),
-    full_truncation = (True,),
-    truncate_when = (512,),
-    random_seed = (51,),
-    learning_rate = (0.01,),
-    epoch_size = (100,),
-    number_of_epoches = (100,),
-    fast_jit = (True,),
+    N = 8 * (151,),
+    n = 8 * (21,),
+    tau = 8 * (None,),  # this parameter is not active in this experiment
+    hx = 4 * (0.3,) + 4 * (0.35,),
+    hy = 8 * (None,),  # this parameter is not active in this experiment
+    hz = 8 * (None,),  # this parameter is not active in this experiment
+    Jx = 8 * (None,),  # this parameter is not active in this experiment
+    Jy = 8 * (None,),  # this parameter is not active in this experiment
+    Jz = 4 * (0.3,)  + 4 * (0.35,),
+    system_qubit = (0, 10, 0, 10, 0, 10, 0, 10),
+    source_qubit = 8 * (None,),  # this parameter is not active in this experiment
+    system_state = 8 * ([1, 0],),
+    env_single_spin_state = 8 * ([0, 1],),
+    eps = 8 * (1e-2,),
+    startN = (50, 50, 75, 75, 50, 50, 75, 75),
+    stopN = (101, 101, 76, 76, 101, 101, 76, 76),
+    full_truncation = 8 * (True,),
+    truncate_when = 8 * (512,),
+    random_seed = 8 * (42,),
+    learning_rate = 8 * (0.01,),
+    epoch_size = 8 * (100,),
+    number_of_epoches = 8 * (100,),
+    fast_jit = 8 * (True,),
 )
 
 
