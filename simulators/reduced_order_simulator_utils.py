@@ -62,7 +62,7 @@ def _reduce_from_top(lattice: List[mps],
         init_states (List[jnp.ndarray]): [initial states of a lattice]
         number_of_qubits (int): [number of qubits in a system]
         till_number (int): [the number of a qubit till which one reduces a lattice]
-        use_full_truncation (bool): [flag showing whether to use full truncation of not]
+        use_full_truncation (bool): [flag showing whether to use full truncation or not]
         truncate_when (int): [when bond dimension atchieves truncate_when value one performs truncation]
         eps (float): [truncation accuracy]
     """
@@ -82,6 +82,7 @@ def _reduce_from_top(lattice: List[mps],
                     set_to_forward_canonical(lattice[0])
                     truncate_forward_canonical(lattice[0], eps)
                 else:
+                    set_to_forward_canonical(lattice[0])
                     truncate_forward_canonical(lattice[0], eps)
         if use_full_truncation:
             set_to_backward_canonical(lattice[0])
@@ -89,6 +90,7 @@ def _reduce_from_top(lattice: List[mps],
             set_to_forward_canonical(lattice[0])
             truncate_forward_canonical(lattice[0], eps)
         else:
+            set_to_forward_canonical(lattice[0])
             truncate_forward_canonical(lattice[0], eps)
 
 
@@ -127,6 +129,7 @@ def _reduce_from_bottom(lattice: List[mps],
                     set_to_forward_canonical(lattice[-1])
                     truncate_forward_canonical(lattice[-1], eps)
                 else:
+                    set_to_forward_canonical(lattice[-1])
                     truncate_forward_canonical(lattice[-1], eps)
         if use_full_truncation:
             set_to_backward_canonical(lattice[-1])
@@ -134,6 +137,7 @@ def _reduce_from_bottom(lattice: List[mps],
             set_to_forward_canonical(lattice[-1])
             truncate_forward_canonical(lattice[-1], eps)
         else:
+            set_to_forward_canonical(lattice[-1])
             truncate_forward_canonical(lattice[-1], eps)
 
 

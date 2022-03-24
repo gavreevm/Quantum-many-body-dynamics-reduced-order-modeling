@@ -14,6 +14,9 @@ from simulators.logger import load_params, load_data
 from experiments_utils import rho2bloch
 from simulators.exact_simulator_utils import M
 
+def latex(x):
+    return list(map(lambda y: r'${}$'.format(y), x))
+
 data = {}
 for i, (root, dirs, files) in enumerate(os.walk("./experiment2_data")):
     if i > 0:
@@ -30,15 +33,20 @@ for i, (root, dirs, files) in enumerate(os.walk("./experiment2_data")):
         output_bloch_vecs = rho2bloch(output_states)
 
         # plotting mutual information dynamics under optimal control
-        plt.figure()
+        fig = plt.figure(figsize=(10, 3))
+        plt.subplots_adjust(hspace = 0.01, wspace = 0.01)
+        plt.tight_layout()
+        
+        plt.subplot(1, 2, 1)
         plt.imshow(controlled_mutual_information.T, cmap='Spectral')
-        plt.savefig('./plots_experiment2/controlled_mutual_information_{}_{}_{}.pdf'.format(params['n'], params['system_qubit'], params['source_qubit']))
+        plt.xticks(list(map(lambda x: x / params['tau'], [0, 1, 2, 3, 4, 5, 6, 7])), latex([0, 1, 2, 3, 4, 5, 6, 7]))
+        plt.yticks([0, params['n']-1], latex([1, params['n']]))
 
         # plotting input/output states
-        fig = plt.figure()
-        ax = fig.add_subplot(111, projection='3d')
+        ax = fig.add_subplot(122, projection='3d')
         ax.set_box_aspect(aspect = (1, 1, 1))
         ax._axis3don = False
+        ax.view_init(10, 10)
 
         u = jnp.linspace(0, 2 * jnp.pi, 100)
         v = jnp.linspace(0, jnp.pi, 100)
@@ -66,4 +74,4 @@ for i, (root, dirs, files) in enumerate(os.walk("./experiment2_data")):
         
         ax.legend(frameon=False, loc=[0.3, 0.8])
 
-        plt.savefig('./plots_experiment2/input_output_states_{}_{}_{}.pdf'.format(params['n'], params['system_qubit'], params['source_qubit']))
+        plt.savefig('./plots_experiment2/information_transmission_{}_{}_{}.svg'.format(params['n'], params['system_qubit'], params['source_qubit']))
