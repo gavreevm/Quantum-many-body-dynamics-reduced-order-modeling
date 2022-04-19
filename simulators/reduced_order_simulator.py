@@ -59,8 +59,9 @@ class ReducedOrderSimulator:
 
         lattice = _layer2lattice(gates_layer, discrete_time)
         number_of_qubits = len(lattice)
+        isometries = [[], []] # top/bottom isometries
         if system_qubit_number == 0:
-            isometries = _reduce_from_bottom(lattice,
+            isometries[1] = _reduce_from_bottom(lattice,
                                 initial_environment_state,
                                 number_of_qubits,
                                 system_qubit_number,
@@ -71,7 +72,7 @@ class ReducedOrderSimulator:
 
 
         elif system_qubit_number == (number_of_qubits-1):
-            isometries = _reduce_from_top(lattice,
+            isometries[0] = _reduce_from_top(lattice,
                              initial_environment_state,
                              number_of_qubits,
                              system_qubit_number,
@@ -81,7 +82,7 @@ class ReducedOrderSimulator:
             _build(lattice)
 
         else:
-            isometries = _reduce_from_bottom(lattice,
+            isometries[1] = _reduce_from_bottom(lattice,
                                 initial_environment_state,
                                 number_of_qubits,
                                 system_qubit_number,
@@ -89,7 +90,7 @@ class ReducedOrderSimulator:
                                 truncate_when=truncate_when,
                                 eps=eps)
 
-            isometries = _reduce_from_top(lattice,
+            isometries[0] = _reduce_from_top(lattice,
                              initial_environment_state,
                              number_of_qubits,
                              system_qubit_number,
@@ -198,9 +199,9 @@ class ReducedOrderSimulator:
                 rhos = rhos + [rho[jnp.newaxis]]
                 return state, rhos
 
-            _, rhos = reduce(iter, zip(reversed(reduced_order_model), control_gates), (
+            final_state, rhos = reduce(iter, zip(reversed(reduced_order_model), control_gates), (
                                                 init_state.reshape((1, 2, 1)), []))
-            return jnp.concatenate(rhos, axis=0)
+            return jnp.concatenate(rhos, axis=0), final_state
 
     # TODO: tests for this method
     def compute_quantum_channels(self,

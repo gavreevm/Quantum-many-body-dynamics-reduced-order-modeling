@@ -87,10 +87,11 @@ def _reduce_from_top(lattice: List[mps],
             lattice.pop(1)
             init_states.pop(1)
             out_dim = lattice[0][0].shape[0]
-
+            # canonical form & truncation
             if out_dim > truncate_when:
                 set_to_forward_canonical(lattice[0])
                 last_iso = truncate_forward_canonical(lattice[0], eps)
+                #isometric tensor for environment state decoding
                 isometries.append(last_iso)
 
         set_to_forward_canonical(lattice[0])
