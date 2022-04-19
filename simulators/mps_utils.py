@@ -1,13 +1,14 @@
+""" MPS utils module
+"""
+
 import jax.numpy as jnp
 from typing import Union, Tuple
 
 
 def _rev_qr(a: jnp.ndarray) -> Tuple[jnp.ndarray, jnp.ndarray]:
     """This function returns "reversed" qr decomposition.
-
     Args:
         a (complex valued jnp.ndarray of shape (m, n)): [input matrix]
-
     Returns:
         Tuple[jnp.ndarray, jnp.ndarray]: [matrices q and r]
     """
@@ -20,7 +21,6 @@ def _rev_qr(a: jnp.ndarray) -> Tuple[jnp.ndarray, jnp.ndarray]:
 def _set_rank(spec: jnp.ndarray, eps: Union[jnp.ndarray, float]) -> jnp.ndarray:
     """This function returns the minimal number of singular values (rank) that are necessary
     to keep, in order to guarantee the given level of accuracy epsilon.
-
     Args:
         spec (real valued jnp.ndarray of shape (n,)): [set of singular values]
         eps (Union[jnp.ndarray, float]): [accuracy]
@@ -38,11 +38,9 @@ def _set_rank(spec: jnp.ndarray, eps: Union[jnp.ndarray, float]) -> jnp.ndarray:
 def _push_r_backward(ker: jnp.ndarray, r: jnp.ndarray) -> Tuple[jnp.ndarray, jnp.ndarray]:
     """This function is a part of the subroutine of setting mps in the forward (left)
     canonical form. It pushes r (a matrix from the qr decomposition) backward in time.
-
     Args:
         ker (complex valued jnp.ndarray of shape (r_left, d, r_right)): [current kernel]
         r (complex valued jnp.ndarray of shape (-1, r_left)): [previous r matrix]
-
     Returns:
         Tuple[jnp.ndarray, jnp.ndarray]: [new kernel and r matrix]
     """
@@ -58,12 +56,10 @@ def _push_r_backward(ker: jnp.ndarray, r: jnp.ndarray) -> Tuple[jnp.ndarray, jnp
 
 def _push_r_forward(ker: jnp.ndarray, r: jnp.ndarray) -> Tuple[jnp.ndarray, jnp.ndarray]:
     """This function is a part of the subroutine of setting mps in the backward (right)
-    canonical form. It pushes r (a matrix from the rq decomposition) forward in time.
-
+       canonical form. It pushes r (a matrix from the rq decomposition) forward in time.
     Args:
         ker (complex valued jnp.ndarray of shape (r_left, d, r_right)): [current kernel]
         r (complex valued jnp.ndarray of shape (r_right, -1)): [previous r matrix]
-
     Returns:
         Tuple[jnp.ndarray, jnp.ndarray]: [new kernel and r matrix]
     """
@@ -84,13 +80,11 @@ def _push_orth_center_forward(ker: jnp.ndarray,
                               eps: Union[float, jnp.ndarray]) -> Tuple[jnp.ndarray, jnp.ndarray]:
     """This function moves the orthogonality center forward in time and also performs
     truncation of singular values spectrum. It is part of mps truncation subroutine.
-
     Args:
         ker (complex valued jnp.ndarray of shape (r_left, d, r_right)): [current kernel]
         u (complex valued jnp.ndarray of shape (r_right, -1)): [u from usv^dag from the previous step]
         spec (complex valued jnp.ndarray of shape (-1,)): [signular values from the previous step]
         eps (Union[float, jnp.ndarray]): [accuracy of truncation]
-
     Returns:
         Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]: [truncated kernel, new u matrix and new spec]"""
 

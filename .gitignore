@@ -147,3 +147,5 @@ cython_debug/
 
 plotting_experiment3_av.py
 experiment3_data_av/
+notebooks/
+

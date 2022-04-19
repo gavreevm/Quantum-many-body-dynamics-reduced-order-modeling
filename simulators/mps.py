@@ -1,15 +1,21 @@
-import jax.numpy as jnp
+"""
+MPS module
+mps is a list with complex valued jnp.ndarray of shape (left_bond, dim, right_bond),
+where dim is a local dimension, left and right bonds take values 1, 2, ...
+                               1
+                               |
+MPO indices enumearion:   0 -- O -- 2, MPS indices enumeration:  0 -- O -- 2.
+                               |                                      |
+                               3                                      1
+"""
+
 from typing import List, Union
 from functools import reduce
-from simulators.mps_utils import _push_r_backward, _push_r_forward, _push_orth_center_forward, _set_rank
-
-# mps is a list with complex valued jnp.ndarray of shape (left_bond, dim, right_bond),
-# where dim is a local dimension, left and right bonds take values 1, 2, ...
-#                                1
-#                                |
-# MPO indices enumearion:   0 -- O -- 2, MPS indices enumeration:  0 -- O -- 2.
-#                                |                                      |
-#                                3                                      1
+import jax.numpy as jnp
+from simulators.mps_utils import (_push_r_backward,
+                                  _push_r_forward,
+                                  _push_orth_center_forward,
+                                  _set_rank)
 
 
 mps = List[jnp.ndarray]  # mps dtype (list with complex valued 3-rank tensors)
@@ -19,10 +25,8 @@ mpo = List[jnp.ndarray]  # mpo dtype (list with complex valued 4-rank tensors)
 def set_to_forward_canonical(inp_mps: mps) -> jnp.ndarray:
     """This function sets mps to the forward (left) canonical form.
     It acts inplace in order to save memory.
-
     Args:
         inp_mps (mps): [input mps]
-
     Returns:
         jnp.ndarray: [logarithmic frobenius norm of the inp_mps]
     """
@@ -90,7 +94,8 @@ def dot_prod(inp_mps1: mps, inp_mps2: mps, use_conj: bool = True) -> jnp.ndarray
         lognorm += jnp.log(norm)
         return lognorm, state
 
-    lognorm, _ = reduce(iter, zip(reversed(inp_mps1), reversed(inp_mps2)), (0., jnp.eye(inp_mps1[-1].shape[-1])))
+    lognorm, _ = reduce(iter, zip(reversed(inp_mps1), reversed(inp_mps2)), (
+                                0., jnp.eye(inp_mps1[-1].shape[-1])))
 
     return lognorm
 
@@ -98,7 +103,6 @@ def dot_prod(inp_mps1: mps, inp_mps2: mps, use_conj: bool = True) -> jnp.ndarray
 def truncate_forward_canonical(inp_mps: mps, eps: Union[float, jnp.ndarray]) -> None:
     """This function contructs forward canonical form of a mps. It acts inplace
     in order to save memory.
-
     Args:
         inp_mps (mps): [input mps]
         eps (Union[float, jnp.ndarray]): [accuracy of truncation]
@@ -109,13 +113,14 @@ def truncate_forward_canonical(inp_mps: mps, eps: Union[float, jnp.ndarray]) -> 
     for i, ker in enumerate(reversed(inp_mps)):
         ker, u, spec = _push_orth_center_forward(ker, u, spec, eps)
         inp_mps[len(inp_mps) - i - 1] = ker
+    return u
 
 
-def truncate_very_last_edge_backward_canonical(inp_mps: mps, eps: Union[float, jnp.ndarray]) -> None:
+def truncate_very_last_edge_backward_canonical(inp_mps: mps,
+                                               eps: Union[float, jnp.ndarray]) -> None:
     """This function truncates the last edge of a mps in the backward (right) canonical form.
     It is necessary to perform complite truncation of an environment. The function
-    acts inplace in order to svae memory.
-
+    acts inplace in order to save memory.
     Args:
         inp_mps (mps): [input mps]
         eps (Union[float, jnp.ndarray]): [accuracy]
@@ -145,6 +150,10 @@ def mpo_mps_product(inp_mpo: mpo, inp_mps: mps, reverse: bool = False) -> None:
         mpo_left_bond, _, mpo_right_bond, _ = mpo_ker.shape
         mps_left_bond, _, mps_right_bond = mps_ker.shape
         if reverse:
-            inp_mps[i] = jnp.einsum('ilkj,mjn->imlkn', mpo_ker, mps_ker).reshape((mpo_left_bond * mps_left_bond, -1, mpo_right_bond * mps_right_bond))
+            inp_mps[i] = jnp.einsum('ilkj,mjn->imlkn', mpo_ker, mps_ker).reshape((
+                                                    mpo_left_bond * mps_left_bond, -1,
+                                                    mpo_right_bond * mps_right_bond))
         else:
-            inp_mps[i] = jnp.einsum('ijkl,mjn->milnk', mpo_ker, mps_ker).reshape((mpo_left_bond * mps_left_bond, -1, mpo_right_bond * mps_right_bond))
+            inp_mps[i] = jnp.einsum('ijkl,mjn->milnk', mpo_ker, mps_ker).reshape((
+                                                    mpo_left_bond * mps_left_bond, -1,
+                                                    mpo_right_bond * mps_right_bond))

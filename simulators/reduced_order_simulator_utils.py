@@ -1,6 +1,15 @@
+""" Reduced order simulator utils module
+"""
+
 from jax import numpy as jnp
 from jax import vmap
-from simulators.mps import mps, mpo, truncate_forward_canonical, truncate_very_last_edge_backward_canonical, set_to_backward_canonical, set_to_forward_canonical, mpo_mps_product
+from tqdm import tqdm
+from simulators.mps import (mps, mpo,
+                            truncate_forward_canonical,
+                            truncate_very_last_edge_backward_canonical,
+                            set_to_backward_canonical,
+                            set_to_forward_canonical,
+                            mpo_mps_product)
 from typing import Union, List, Tuple
 from simulators.mps_utils import _set_rank
 from simulators.dataclasses import ROMDynamicsGenerator
@@ -55,8 +64,7 @@ def _reduce_from_top(lattice: List[mps],
                      use_full_truncation: bool,
                      truncate_when: int,
                      eps: float) -> None:
-    """[This function reduces upper part of a lattice, it acts inplace]
-
+    """ This function reduces upper part of a lattice, it acts inplace
     Args:
         lattice (List[mps]): [lattice]
         init_states (List[jnp.ndarray]): [initial states of a lattice]
@@ -66,32 +74,28 @@ def _reduce_from_top(lattice: List[mps],
         truncate_when (int): [when bond dimension atchieves truncate_when value one performs truncation]
         eps (float): [truncation accuracy]
     """
-
     if till_number != 0:
-        lattice[0][-1] = jnp.tensordot(lattice[0][-1], init_states[0].reshape((2, 1)), axes=1)
-        for _ in range(till_number-1):
-            lattice[1][-1] = jnp.tensordot(lattice[1][-1], init_states[1].reshape((2, 1)), axes=[[2], [0]]).transpose((0, 1, 3, 2))
+        lattice[0][-1] = jnp.tensordot(lattice[0][-1],
+                                       init_states[0].reshape((2, 1)), axes=1)
+
+        isometries= []
+        for _ in tqdm(range(till_number-1), desc='Lattice reducing (top)', ncols=100):
+            lattice[1][-1] = jnp.tensordot(lattice[1][-1],
+                                           init_states[1].reshape((2, 1)),
+                                           axes=[[2], [0]]).transpose((0, 1, 3, 2))
             mpo_mps_product(lattice[1], lattice[0])
             lattice.pop(1)
             init_states.pop(1)
             out_dim = lattice[0][0].shape[0]
+
             if out_dim > truncate_when:
-                if use_full_truncation:
-                    set_to_backward_canonical(lattice[0])
-                    truncate_very_last_edge_backward_canonical(lattice[0], eps)
-                    set_to_forward_canonical(lattice[0])
-                    truncate_forward_canonical(lattice[0], eps)
-                else:
-                    set_to_forward_canonical(lattice[0])
-                    truncate_forward_canonical(lattice[0], eps)
-        if use_full_truncation:
-            set_to_backward_canonical(lattice[0])
-            truncate_very_last_edge_backward_canonical(lattice[0], eps)
-            set_to_forward_canonical(lattice[0])
-            truncate_forward_canonical(lattice[0], eps)
-        else:
-            set_to_forward_canonical(lattice[0])
-            truncate_forward_canonical(lattice[0], eps)
+                set_to_forward_canonical(lattice[0])
+                last_iso = truncate_forward_canonical(lattice[0], eps)
+                isometries.append(last_iso)
+
+        set_to_forward_canonical(lattice[0])
+        truncate_forward_canonical(lattice[0], eps)
+    return isometries
 
 
 def _reduce_from_bottom(lattice: List[mps],
@@ -101,60 +105,56 @@ def _reduce_from_bottom(lattice: List[mps],
                         use_full_truncation: bool,
                         truncate_when: int,
                         eps: float) -> None:
-    """[This function reduces lower part of a lattice, it acts inplace]
-
+    """ This function reduces lower part of a lattice, it acts inplace
     Args:
         lattice (List[mps]): [lattice]
         init_states (List[jnp.ndarray]): [initial states of a lattice]
         number_of_qubits (int): [number of qubits in a system]
         till_number (int): [the number of a qubit till which one reduces a lattice]
         use_full_truncation (bool): [flag showing whether to use full truncation of not]
-        truncate_when (int): [when bond dimension atchieves truncate_when value one performs truncation]
+        truncate_when (int): [when bond dimension atchieves truncate_when value one performs
+                                                                                 truncation]
         eps (float): [truncation accuracy]
     """
-
     number_of_qubits_to_reduce = (number_of_qubits - 1) - till_number
     if number_of_qubits_to_reduce != 0:
-        lattice[-1][-1] = jnp.tensordot(lattice[-1][-1], init_states[-1].reshape((2, 1)), axes=1)
-        for _ in range(number_of_qubits_to_reduce-1):
-            lattice[-2][-1] = jnp.tensordot(lattice[-2][-1], init_states[-2].reshape((2, 1)), axes=[[2], [0]]).transpose((0, 1, 3, 2))
+        lattice[-1][-1] = jnp.tensordot(lattice[-1][-1],
+                                        init_states[-1].reshape((2, 1)), axes=1)
+
+        isometries = []
+        for _ in tqdm(range(number_of_qubits_to_reduce-1),
+                desc='Lattice reducing (bot)', ncols=100):
+            lattice[-2][-1] = jnp.tensordot(lattice[-2][-1], init_states[-2].reshape((2, 1)),
+                                            axes=[[2], [0]]).transpose((0, 1, 3, 2))
             mpo_mps_product(lattice[-2], lattice[-1], reverse=True)
             lattice.pop(-2)
             init_states.pop(-2)
             out_dim = lattice[-1][0].shape[0]
+            # canonical form & truncation
             if out_dim > truncate_when:
-                if use_full_truncation:
-                    set_to_backward_canonical(lattice[-1])
-                    truncate_very_last_edge_backward_canonical(lattice[-1], eps)
-                    set_to_forward_canonical(lattice[-1])
-                    truncate_forward_canonical(lattice[-1], eps)
-                else:
-                    set_to_forward_canonical(lattice[-1])
-                    truncate_forward_canonical(lattice[-1], eps)
-        if use_full_truncation:
-            set_to_backward_canonical(lattice[-1])
-            truncate_very_last_edge_backward_canonical(lattice[-1], eps)
-            set_to_forward_canonical(lattice[-1])
-            truncate_forward_canonical(lattice[-1], eps)
-        else:
-            set_to_forward_canonical(lattice[-1])
-            truncate_forward_canonical(lattice[-1], eps)
+                set_to_forward_canonical(lattice[-1])
+                last_iso = truncate_forward_canonical(lattice[-1], eps)
+                #isometric tensor for environment state decoding
+                isometries.append(last_iso)
+
+        set_to_forward_canonical(lattice[-1])
+        truncate_forward_canonical(lattice[-1], eps)
+    return isometries
 
 
 def _build(reduced_lattice: List[Union[mps, mpo]]) -> None:
-    """[This function set lattice after reduction to a standardized form.]
-
+    """ This function set lattice after reduction to a standardized form.
     Args:
         reduced_lattice (List[Union[mps, mpo]]): [lattice after reduction]
     """
 
     if len(reduced_lattice) < 3:
         if reduced_lattice[0][-1].shape[-1] == 2:
-            for i, ker in enumerate(reduced_lattice[0]):
+            for i, ker in tqdm(enumerate(reduced_lattice[0]), desc='Build reduced model', ncols=100):
                 reduced_lattice[0][i] = ker[:, jnp.newaxis].transpose((0, 1, 3, 2))
             reduced_lattice.insert(0, len(reduced_lattice[0]) * [jnp.ones((1, 1, 1))])
         else:
-            for i, ker in enumerate(reduced_lattice[-1]):
+            for i, ker in tqdm(enumerate(reduced_lattice[-1]), desc='Build reduced model', ncols=100):
                 reduced_lattice[-1][i] = ker[..., jnp.newaxis]
             reduced_lattice.append(len(reduced_lattice[0]) * [jnp.ones((1, 1, 1))])
 
@@ -163,10 +163,8 @@ def _build(reduced_lattice: List[Union[mps, mpo]]) -> None:
 def _max_bond_dim(reduced_order_model: ReducedOrderModel) -> Tuple[int, int]:
     """This function returns max bond dimension for upper and lower parts of
     reduced order model.
-
     Args:
         reduced_order_model (ReducedOrderModel): Reduced order model
-
     Returns:
         Tuple[int, int]: Tuple with max top bond dim. and max bottom bond dim.
     """
@@ -174,6 +172,7 @@ def _max_bond_dim(reduced_order_model: ReducedOrderModel) -> Tuple[int, int]:
     left_bonds_top = [kers.ker_top.shape[0] for kers in reduced_order_model]
     right_bonds_top = [kers.ker_top.shape[2] for kers in reduced_order_model]
     max_top = max(left_bonds_top + right_bonds_top)
+
     left_bonds_bottom = [kers.ker_bottom.shape[0] for kers in reduced_order_model]
     right_bonds_bottom = [kers.ker_bottom.shape[2] for kers in reduced_order_model]
     max_bottom = max(left_bonds_bottom + right_bonds_bottom)

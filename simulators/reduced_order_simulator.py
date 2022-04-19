@@ -1,3 +1,6 @@
+""" Reduced order simulator module
+"""
+
 from jax import numpy as jnp
 from jax import lax, vmap
 from functools import reduce
@@ -9,8 +12,8 @@ from simulators.reduced_order_simulator_utils import (
     _reduce_from_bottom,
     _build,
     _max_bond_dim,
-    ReducedOrderModel,
-)
+    ReducedOrderModel)
+
 from simulators.exact_simulator_utils import M_inv, complete_system
 from simulators.dataclasses import ROMDynamicsGenerator
 
@@ -43,19 +46,21 @@ class ReducedOrderSimulator:
             gates_layer (complex valued jnp.ndarray of shape (number of qubits-1, 4, 4)):
                 [layer of gates describing dynamics of the whole system]
             use_full_truncation (bool): [flag showing whether to use full truncation of not]
-            truncate_when (int): [when bond dimension atchieves truncate_when value one performs truncation]
+            truncate_when (int): [when bond dimension atchieves truncate_when value one performs
+                                                                                     truncation]
             eps (float): [truncation accuracy]
 
         Returns:
             ReducedOrderModel: [reduced order model of quantum dynamics]
         """
 
-        assert system_qubit_number == controlled_qubit_number, "Different controlled qubit and system qubit are not supported yet"
+        assert system_qubit_number == controlled_qubit_number, \
+        "Different controlled qubit and system qubit are not supported yet"
 
         lattice = _layer2lattice(gates_layer, discrete_time)
         number_of_qubits = len(lattice)
         if system_qubit_number == 0:
-            _reduce_from_bottom(lattice,
+            isometries = _reduce_from_bottom(lattice,
                                 initial_environment_state,
                                 number_of_qubits,
                                 system_qubit_number,
@@ -64,9 +69,9 @@ class ReducedOrderSimulator:
                                 eps=eps)
             _build(lattice)
 
-            
+
         elif system_qubit_number == (number_of_qubits-1):
-            _reduce_from_top(lattice,
+            isometries = _reduce_from_top(lattice,
                              initial_environment_state,
                              number_of_qubits,
                              system_qubit_number,
@@ -74,15 +79,17 @@ class ReducedOrderSimulator:
                              truncate_when=truncate_when,
                              eps=eps)
             _build(lattice)
+
         else:
-            _reduce_from_bottom(lattice,
+            isometries = _reduce_from_bottom(lattice,
                                 initial_environment_state,
                                 number_of_qubits,
                                 system_qubit_number,
                                 use_full_truncation=use_full_truncation,
                                 truncate_when=truncate_when,
                                 eps=eps)
-            _reduce_from_top(lattice,
+
+            isometries = _reduce_from_top(lattice,
                              initial_environment_state,
                              number_of_qubits,
                              system_qubit_number,
@@ -90,16 +97,19 @@ class ReducedOrderSimulator:
                              truncate_when=truncate_when,
                              eps=eps)
             _build(lattice)
-        return [ROMDynamicsGenerator(ker_top=ker_top, ker_mid=ker_mid, ker_bottom=ker_bottom) for ker_top, ker_mid, ker_bottom in zip(*lattice)]
+
+        return [ROMDynamicsGenerator(ker_top=ker_top, ker_mid=ker_mid,
+                                     ker_bottom=ker_bottom) for ker_top, ker_mid, ker_bottom in zip(
+                                                            *lattice)], isometries
+
 
     #TODO: write tests for this method
     def preprocess_reduced_order_model(self,
-                                       reduced_order_model: ReducedOrderModel) -> PreprocessedReducedOrderModel:
+                                       reduced_order_model:
+                                       ReducedOrderModel) -> PreprocessedReducedOrderModel:
         """[This method preprocess reduced-order model to make it suitable for fast jit.]
-
         Args:
             reduced_order_model (ReducedOrderModel): [reduced-order model]
-
         Returns:
             PreprocessedReducedOrderModel: [preprocessed reduced-order model]
         """
@@ -114,15 +124,26 @@ class ReducedOrderSimulator:
             ker_top, ker_mid, ker_bottom = rom_ker.ker_top, rom_ker.ker_mid, rom_ker.ker_bottom
             top_left_dim, _, top_right_dim = ker_top.shape
             bottom_left_dim, _, bottom_right_dim = ker_bottom.shape
-            top_tensors.append(jnp.pad(ker_top, ((0, top_max_dim - top_left_dim), (0, 0), (0, top_max_dim - top_right_dim)))[jnp.newaxis])
+
+            top_tensors.append(jnp.pad(ker_top, ((0, top_max_dim - top_left_dim), (0, 0), (
+                                                  0, top_max_dim - top_right_dim)))[jnp.newaxis])
             mid_tensors.append(ker_mid[jnp.newaxis])
-            bottom_tensors.append(jnp.pad(ker_bottom, ((0, bottom_max_dim - bottom_left_dim), (0, 0), (0, bottom_max_dim - bottom_right_dim)))[jnp.newaxis])
-        ker_top, ker_mid, ker_bottom = jnp.concatenate(top_tensors, axis=0), jnp.concatenate(mid_tensors, axis=0), jnp.concatenate(bottom_tensors, axis=0)
-        return ROMDynamicsGenerator(ker_top=ker_top, ker_mid=ker_mid, ker_bottom=ker_bottom)
+            bottom_tensors.append(jnp.pad(ker_bottom, ((
+                0, bottom_max_dim - bottom_left_dim), (0, 0), (
+                0, bottom_max_dim - bottom_right_dim)))[jnp.newaxis])
+
+        ker_top, ker_mid, ker_bottom = jnp.concatenate(
+                 top_tensors, axis=0), jnp.concatenate(
+                 mid_tensors, axis=0), jnp.concatenate(
+                 bottom_tensors, axis=0)
+
+        return ROMDynamicsGenerator(
+               ker_top=ker_top, ker_mid=ker_mid, ker_bottom=ker_bottom)
 
     # TODO: tests for the fast_jit == True
     def compute_dynamics(self,
-                         reduced_order_model: Union[ReducedOrderModel, PreprocessedReducedOrderModel],
+                         reduced_order_model: Union[ReducedOrderModel,
+                                                    PreprocessedReducedOrderModel],
                          control_gates: jnp.ndarray,
                          init_state: jnp.ndarray,
                          fast_jit: bool = False) -> jnp.ndarray:
@@ -145,6 +166,7 @@ class ReducedOrderSimulator:
             _, bottom_dim, _, _ = reduced_order_model.ker_bottom.shape
             init_state = init_state[jnp.newaxis, :, jnp.newaxis]
             init_state = jnp.pad(init_state, ((0, top_dim-1), (0, 0), (0, bottom_dim-1)))
+
             def iter(state, control_and_gate):
                 rom, control = control_and_gate
                 top, mid, bottom = rom.ker_top, rom.ker_mid, rom.ker_bottom
@@ -156,8 +178,11 @@ class ReducedOrderSimulator:
                 state /= jnp.linalg.norm(state)
                 rho = jnp.tensordot(state, state.conj(), axes=[[0, 2], [0, 2]])
                 return state, rho
-            _, rhos = lax.scan(iter, init_state, (reduced_order_model, control_gates[::-1]), reverse=True)
+
+            _, rhos = lax.scan(iter, init_state, (reduced_order_model, control_gates[::-1]),
+                                                                              reverse=True)
             return rhos[::-1]
+
         else:
             def iter(carry, control_and_gate):
                 state, rhos = carry
@@ -173,7 +198,8 @@ class ReducedOrderSimulator:
                 rhos = rhos + [rho[jnp.newaxis]]
                 return state, rhos
 
-            _, rhos = reduce(iter, zip(reversed(reduced_order_model), control_gates), (init_state.reshape((1, 2, 1)), []))
+            _, rhos = reduce(iter, zip(reversed(reduced_order_model), control_gates), (
+                                                init_state.reshape((1, 2, 1)), []))
             return jnp.concatenate(rhos, axis=0)
 
     # TODO: tests for this method
@@ -184,7 +210,7 @@ class ReducedOrderSimulator:
         """[This method computes quantum channels within reduced-order model]
 
         Args:
-            reduced_order_model (Union[ReducedOrderModel, PreprocessedReducedOrderModel]): 
+            reduced_order_model (Union[ReducedOrderModel, PreprocessedReducedOrderModel]):
                 [reduced-order model]
             control_gates (conplex valued jnp.ndarray of shape (discrete_time, 2, 2)): [description]
             fast_jit (bool) [flag showing whether to use preprocessed reduced-order model for fast
