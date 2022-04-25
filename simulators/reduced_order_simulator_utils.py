@@ -95,7 +95,8 @@ def _reduce_from_top(lattice: List[mps],
                 isometries.append(last_iso)
 
         set_to_forward_canonical(lattice[0])
-        truncate_forward_canonical(lattice[0], eps)
+        last_iso = truncate_forward_canonical(lattice[0], eps)
+        isometries.append(last_iso)
     return isometries
 
 
@@ -139,7 +140,8 @@ def _reduce_from_bottom(lattice: List[mps],
                 isometries.append(last_iso)
 
         set_to_forward_canonical(lattice[-1])
-        truncate_forward_canonical(lattice[-1], eps)
+        last_iso = truncate_forward_canonical(lattice[-1], eps)
+        isometries.append(last_iso)
     return isometries
 
 

@@ -101,7 +101,7 @@ class ReducedOrderSimulator:
 
         return [ROMDynamicsGenerator(ker_top=ker_top, ker_mid=ker_mid,
                                      ker_bottom=ker_bottom) for ker_top, ker_mid, ker_bottom in zip(
-                                                            *lattice)], isometries
+                                                            *lattice)], isometries, lattice
 
 
     #TODO: write tests for this method

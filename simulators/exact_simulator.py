@@ -39,6 +39,7 @@ class ExactSimulator:
         )
         return state
 
+
     @partial(jit, static_argnums=(0, 1))
     def compute_dynamics_of_density_matrices(self,
                                              sim_state: ExactSimulatorState,
@@ -79,6 +80,7 @@ class ExactSimulator:
 
         _, rhos = scan(iter, state, control_gates)
         return rhos
+
 
     @partial(jit, static_argnums=(0, 1))
     def compute_quantum_channels(self,
