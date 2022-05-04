@@ -159,4 +159,4 @@ def environment_energy(ren_ham, final_state):
     """Calculate energy of the environment """
     energy = jnp.tensordot(ren_ham, final_state, axes=((0, 1, 2), (0, 1, 2)))
     energy = jnp.tensordot(energy, final_state.conj(), axes=((0, 1, 2), (0, 1, 2)))
-    return energy
+    return jnp.real(energy)
