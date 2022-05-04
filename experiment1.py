@@ -123,7 +123,7 @@ def run_experiment(set_of_params: ExperimentParameters):
         save_data(zero_control_mutual_information, dir_path + '/zero_control_mutual_information.pickle')
         save_data(zero_control_quantum_channels, dir_path + '/zero_control_quantum_channels.pickle')
         save_data(zero_control_exact_density_matrices, dir_path + '/zero_control_exact_density_matrices.pickle')
-        
+
         print("Exact dynamics simulation under zero control sequence for subexperiment #{} is done.".format(i+1))
 
         # REDUCED_ORDER MODEL BASED DYNAMICS SIMULATION
@@ -138,18 +138,18 @@ def run_experiment(set_of_params: ExperimentParameters):
             params.truncate_when,
             params.eps)
         zero_control_ro_model_based_density_matrices = ro_sim.compute_dynamics(ro_model, trivial_control_gates, system_state)
-        
+
         # LOGGING SIMULATED DATA
         save_data(ro_model, dir_path + '/ro_model.pickle')
         save_data(zero_control_ro_model_based_density_matrices, dir_path + '/zero_control_ro_based_density_matrices.pickle')
-        
+
         print("Reduced-order model for subexperiment #{} is built.".format(i+1))
         print("Control sequance optimization is run:")
 
         # CONTROL SIGNAL OPTIMIZATION
         if params.fast_jit:
             ro_model = ro_sim.preprocess_reduced_order_model(ro_model)
-            
+
         # This is the loss function that is being optimized
         def loss_fn(ro_model, control_gates):
             half_N = params.N // 2
@@ -170,7 +170,7 @@ def run_experiment(set_of_params: ExperimentParameters):
         # LOGGING SIMULATED DATA
         save_data(control_gates, dir_path + '/control_gates.pickle')
         save_data(learning_curve, dir_path + '/learning_curve.pickle')
-        
+
         print("The optimal control sequance for subexperiment #{} is found.".format(i+1))
 
         # EXACT DYNAMICS SIMULATION WITH CONTROL
@@ -182,7 +182,7 @@ def run_experiment(set_of_params: ExperimentParameters):
         )
         controlled_mutual_information = mutual_information(controlled_quantum_channels)
         controlled_exact_density_matrices = channels2rhos(controlled_quantum_channels, system_state)
-        
+
         # LOGGING SIMULATED DATA
         save_data(controlled_quantum_channels, dir_path + '/controlled_quantum_channels.pickle')
         save_data(controlled_exact_density_matrices, dir_path + '/controlled_exact_density_matrices.pickle')
@@ -190,10 +190,10 @@ def run_experiment(set_of_params: ExperimentParameters):
 
         # REDUCED_ORDER MODEL BASED DYNAMICS SIMULATION WITH CONTROL
         controlled_ro_model_based_density_matrices = ro_sim.compute_dynamics(ro_model, control_gates, system_state)
-        
+
         # LOGGING SIMULATED DATA
         save_data(controlled_ro_model_based_density_matrices, dir_path + '/controlled_ro_based_density_matrices.pickle')
-        
+
         print("Exact dynamics simulation under optimal control sequence for subexperiment #{} is done.".format(i+1))
 
 

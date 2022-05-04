@@ -59,6 +59,10 @@ class ReducedOrderSimulator:
 
         lattice = _layer2lattice(gates_layer, discrete_time)
         number_of_qubits = len(lattice)
+
+        assert number_of_qubits % 2 != 0, \
+        "Reduced order simulator supports only odd number of qubits"
+
         isometries = [[], []] # top/bottom isometries
         if system_qubit_number == 0:
             isometries[1] = _reduce_from_bottom(lattice,
