@@ -190,7 +190,7 @@ class ReducedOrderSimulator:
 
         else:
             def iter(carry, control_and_gate):
-                state, rhos = carry
+                state, rhos, states = carry
                 rom, control = control_and_gate
                 top, mid, bottom = rom.ker_top, rom.ker_mid, rom.ker_bottom
                 state = jnp.tensordot(top, state, axes=1)
@@ -201,11 +201,12 @@ class ReducedOrderSimulator:
                 state /= jnp.linalg.norm(state)
                 rho = jnp.tensordot(state, state.conj(), axes=[[0, 2], [0, 2]])
                 rhos = rhos + [rho[jnp.newaxis]]
-                return state, rhos
+                states = states + [state]
+                return state, rhos, states
 
-            final_state, rhos = reduce(iter, zip(reversed(reduced_order_model), control_gates), (
-                                                init_state.reshape((1, 2, 1)), []))
-            return jnp.concatenate(rhos, axis=0), final_state
+            _, rhos, states= reduce(iter, zip(reversed(reduced_order_model), control_gates), (
+                                                        init_state.reshape((1, 2, 1)), [], []))
+            return jnp.concatenate(rhos, axis=0), states
 
     # TODO: tests for this method
     def compute_quantum_channels(self,

@@ -1,7 +1,8 @@
-import os
-#os.add_dll_directory(r"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.1\bin")
+import os #os.add_dll_directory(r"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.1\bin")
 import jax
 jax.config.update('jax_platform_name', 'cpu')
+#from jax.config import config
+#config.update("jax_enable_x64", True)
 
 from dataclasses import asdict
 import uuid
@@ -16,34 +17,34 @@ from simulators.exact_simulator import ExactSimulator
 from simulators.reduced_order_simulator import ReducedOrderSimulator
 from simulators.control import optimize
 from simulators.dataclasses import ExperimentParameters
-from experiments_utils import rom2exact_init_state_converter, zero_control_seq, random_control_seq, channels2rhos, rho2bloch
+from experiments_utils import rom2exact_init_state_converter, zero_control_seq, random_control_seq, channels2rhos, rho2bloch, mutual_information
 from environment_energy import params2hamiltonian_mpo, renorm_hamiltonian, environment_energy
 
 
 set_of_params = ExperimentParameters(
-    N = 100,
-    n = 21,
-    tau = 0.05,
-    hx = 0.3,
-    hy = 0.2,
-    hz = 0.1,
-    Jx = 0.9,
-    Jy = 1.,
-    Jz = 1.1,
-    system_qubit = 0,
-    source_qubit = None,  # this parameter is not active in this experiment
-    system_state = [1, 0],
-    env_single_spin_state = [0, 1],
-    eps = 1e-3,
-    startN = None,  # this parameter is not active in this experiment
-    stopN = None,  # this parameter is not active in this experiment
-    full_truncation = False,
-    truncate_when = 64,
-    random_seed = 42,
-    learning_rate = 0.03,
-    epoch_size = 100,
-    number_of_epoches = 100,
-    fast_jit =  False,
+        N = (100,),
+        n = (21,),
+        tau = (0.05,),
+        hx = (0.3,),
+        hy = (0.2,),
+        hz = (0.1,),
+        Jx = (0.9,),
+        Jy = (1.,),
+        Jz = (1.1,),
+        system_qubit = (0,),
+        source_qubit = (None,),  # this parameter is not active in this experiment
+        system_state = ([1, 0],),
+        env_single_spin_state = ([0, 1],),
+        eps = (1e-3,),
+        startN = (None,),  # this parameter is not active in this experiment
+        stopN = (None,),  # this parameter is not active in this experiment
+        full_truncation = (False,),
+        truncate_when = (64,),
+        random_seed = (314,),
+        learning_rate = (0.03,),
+        epoch_size = (100,),
+        number_of_epoches = (100,),
+        fast_jit =  (False,),
 )
 
 
@@ -52,33 +53,31 @@ def run_experiment(set_of_params: ExperimentParameters):
     for params in zip(*set_of_params):
         params = ExperimentParameters(*params)
 
-        print("Subexperiment #{} is run. \n".format(i+1))
+        print("Environment cooling experimant started")
         key = random.PRNGKey(params.random_seed)
+
+        print("Subexperiment #{} is run. \n".format(i+1))
         experiment_id = str(datetime.now())
         dir_path = 'experiment_cooling_data/' + experiment_id
         os.mkdir(dir_path)
 
+        # Save parameters
         save_params(asdict(params), dir_path + '/params.txt')
-
-        # gates
+        # Gates
         gates_layer = params2gates_layer(params)
         save_data(gates_layer, dir_path + '/gates_layer.pickle')
-
-        # initial env. state for the reduced-order simulator
+        # Initial env. state for ROM simulator
         ro_env_state = (params.n - 1) * [jnp.array(params.env_single_spin_state, dtype=jnp.complex64)]
-
-        # initial env. state for the exact simulator
+        # Initial env. state for exact simulator
         ex_env_state = rom2exact_init_state_converter(ro_env_state)
-
-        # system state
+        # System state
         system_state = jnp.array(params.system_state, dtype=jnp.complex64)
-
-        # zero control seq.
+        # Zero control seq.
         trivial_control_gates = zero_control_seq(params.N)
-
-        # initial non-zero control seq.
+        # Initial non-zero control seq.
         control_gates = random_control_seq(key, params.N)
 
+        ##################################################
         # EXACT DYNAMICS SIMULATION
         ex_sim = ExactSimulator()
         ex_sim_state = ex_sim.initialize(
@@ -93,16 +92,18 @@ def run_experiment(set_of_params: ExperimentParameters):
             gates_layer,
             trivial_control_gates,
         )
-        zero_control_exact_density_matrices = channels2rhos(zero_control_quantum_channels, system_state)
-        zero_control_mutual_information = mutual_information(zero_control_quantum_channels)
+        zero_control_exact_density_matrices = channels2rhos(zero_control_quantum_channels,
+                                                                            system_state)
 
         # LOGGING SIMULATED DATA
-        save_data(zero_control_mutual_information, dir_path + '/zero_control_mutual_information.pickle')
-        save_data(zero_control_quantum_channels, dir_path + '/zero_control_quantum_channels.pickle')
-        save_data(zero_control_exact_density_matrices, dir_path + '/zero_control_exact_density_matrices.pickle')
+        save_data(zero_control_quantum_channels, dir_path + \
+                    '/zero_control_quantum_channels.pickle')
+        save_data(zero_control_exact_density_matrices, dir_path + \
+                    '/zero_control_exact_density_matrices.pickle')
 
-        print("Exact dynamics simulation under zero control sequence for subexperiment #{} is done.".format(i+1))
+        print("Exact simulation under zero control is done. Subexperiment #{}".format(i+1))
 
+        ##################################################
         # REDUCED_ORDER MODEL BASED DYNAMICS SIMULATION
         ro_sim = ReducedOrderSimulator()
         ro_model, isometries, _ = ro_sim.build_reduced_order_model(
@@ -114,37 +115,64 @@ def run_experiment(set_of_params: ExperimentParameters):
             params.full_truncation,
             params.truncate_when,
             params.eps)
-        zero_control_ro_model_based_density_matrices, final_state = ro_sim.compute_dynamics(ro_model, trivial_control_gates, system_state)
+
+        zero_control_ro_model_density_matrices, ro_states = ro_sim.compute_dynamics(
+                                                                ro_model,
+                                                                trivial_control_gates,
+                                                                system_state)
 
         # LOGGING SIMULATED DATA
-        save_data(ro_model, dir_path + '/ro_model.pickle')
-        save_data(zero_control_ro_model_based_density_matrices, dir_path + '/zero_control_ro_based_density_matrices.pickle')
+        #save_data(ro_model, dir_path + '/ro_model.pickle')
+        save_data(zero_control_ro_model_density_matrices, dir_path +\
+                  '/zero_control_ro_based_density_matrices.pickle')
 
-        print("Reduced-order model for subexperiment #{} is built.".format(i+1))
-        print("Control sequance optimization is run:")
+        print("Reduced-order model is built. Subexperiment #{}".format(i+1))
+        print("Control sequence optimization is run:")
 
+        ##################################################
         # CONTROL SIGNAL OPTIMIZATION
         if params.fast_jit:
             ro_model = ro_sim.preprocess_reduced_order_model(ro_model)
 
         # Transform parameters
-        couplings = jnp.array((set_of_params.n - 1) *
-                              [set_of_params.Jx, set_of_params.Jy, set_of_params.Jz]).reshape(
-                              set_of_params.n - 1, 3)
+        couplings = jnp.array((params.n - 1) *
+                              [params.Jx,
+                               params.Jy,
+                               params.Jz]).reshape(
+                               params.n - 1, 3)
 
-        fields = jnp.array((set_of_params.n) *
-                              [set_of_params.hx, set_of_params.hy, set_of_params.hz]).reshape(
-                              set_of_params.n, 3)
+        fields = jnp.array((params.n) *
+                              [params.hx,
+                               params.hy,
+                               params.hz]).reshape(
+                               params.n, 3)
 
-        mpo_hamiltonian = params2hamiltonian_mpo(couplings, fields)
+        top_isometries, bot_isometries = isometries
+        resh_bot_iso = list(map(list, zip(*bot_isometries)))
+        resh_top_iso = list(map(list, zip(*top_isometries)))
+
         # Hamiltonian renormalization
-        renormalized_ham = renorm_hamiltonian(mpo_hamiltonian, isometries, set_of_params.system_qubit)
+        mpo_hamiltonian = params2hamiltonian_mpo(couplings, fields)
+        print('Hamiltonian MPO composed')
 
-        # This is the loss function that is being optimized
+        if params.system_qubit == 0:
+            last_iso = ([], resh_bot_iso[-1])
+        elif params.system_qubit == params.n - 1:
+            last_iso = (resh_top_iso[-1], [])
+        else:
+            last_iso = (resh_top_iso[-1], resh_bot_iso[-1])
+
+        renormalized_ham = renorm_hamiltonian(mpo_hamiltonian,
+                                              last_iso,
+                                              params.system_qubit)
+        print('Hamiltonian renormalization finished')
+
+        # Loss function that is being optimized
         def loss_function(ro_model, control_gates):
-            _, final = ro_sim.compute_dynamics(ro_model, control_gates, system_state)
-            return environment_energy(renormalized_ham, final)
+            _, ro_states = ro_sim.compute_dynamics(ro_model, control_gates, system_state)
+            return environment_energy(renormalized_ham, ro_states[-1])
 
+        print('Optimization started')
         control_gates, learning_curve = optimize(
             loss_function,
             ro_model,
@@ -158,8 +186,10 @@ def run_experiment(set_of_params: ExperimentParameters):
         save_data(control_gates, dir_path + '/control_gates.pickle')
         save_data(learning_curve, dir_path + '/learning_curve.pickle')
 
-        print("The optimal control sequance for subexperiment #{} is found.".format(i+1))
+        print("Optimal control sequence is found. Subexperiment #{}".format(i+1))
 
+
+        ##################################################
         # EXACT DYNAMICS SIMULATION WITH CONTROL
         controlled_quantum_channels = ex_sim.compute_quantum_channels(
             ex_sim_state,
@@ -185,8 +215,7 @@ def run_experiment(set_of_params: ExperimentParameters):
 
 
         #SIMPLE PLOTTING
-
-        zero_control_ro_bloch_vectors = rho2bloch(zero_control_ro_model_based_density_matrices)
+        zero_control_ro_bloch_vectors = rho2bloch(zero_control_ro_model_density_matrices)
         zero_control_exact_bloch_vectors = rho2bloch(zero_control_exact_density_matrices[:, params.system_qubit])
         controlled_ro_bloch_vectors = rho2bloch(controlled_ro_model_based_density_matrices)
         controlled_exact_bloch_vectors = rho2bloch(controlled_exact_density_matrices[:, params.system_qubit])
@@ -229,11 +258,11 @@ def run_experiment(set_of_params: ExperimentParameters):
         plt.yscale('log')
         plt.savefig(dir_path + '/learning_curve.pdf')
 
-        plt.figure()
-        plt.imshow(zero_control_mutual_information, cmap='inferno')
-        plt.xlabel('spin_number')
-        plt.ylabel('N')
-        plt.savefig(dir_path + '/zero_control_mutual_information.pdf')
+        # plt.figure()
+        # plt.imshow(zero_control_mutual_information, cmap='inferno')
+        # plt.xlabel('spin_number')
+        # plt.ylabel('N')
+        # plt.savefig(dir_path + '/zero_control_mutual_information.pdf')
 
         plt.figure()
         plt.imshow(controlled_mutual_information, cmap='inferno')

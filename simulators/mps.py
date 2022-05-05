@@ -110,10 +110,12 @@ def truncate_forward_canonical(inp_mps: mps, eps: Union[float, jnp.ndarray]) -> 
 
     u = jnp.eye(inp_mps[-1].shape[-1])
     spec = jnp.ones((inp_mps[-1].shape[-1],))
+    isometric_matrs = []
     for i, ker in enumerate(reversed(inp_mps)):
         ker, u, spec = _push_orth_center_forward(ker, u, spec, eps)
         inp_mps[len(inp_mps) - i - 1] = ker
-    return u
+        isometric_matrs += [u]
+    return isometric_matrs
 
 
 def truncate_very_last_edge_backward_canonical(inp_mps: mps,

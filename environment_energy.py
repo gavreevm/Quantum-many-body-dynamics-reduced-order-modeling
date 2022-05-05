@@ -160,3 +160,30 @@ def environment_energy(ren_ham, final_state):
     energy = jnp.tensordot(ren_ham, final_state, axes=((0, 1, 2), (0, 1, 2)))
     energy = jnp.tensordot(energy, final_state.conj(), axes=((0, 1, 2), (0, 1, 2)))
     return jnp.real(energy)
+
+
+def _bond_ham(couplings, fields):
+    bond_pars = []
+    n = len(couplings)
+    zeros = jnp.zeros(3)
+    for i in range(n):
+        bond_couplings = jnp.array(i * [jnp.zeros(3)] +\
+                                    [couplings[i]] +\
+                                    (n - i - 1) * [jnp.zeros(3)])
+        bond_fields = jnp.array(i * [zeros] + \
+                                [fields[i]] + \
+                                [fields[i+1]] + \
+                                (n - i - 1) * [zeros])
+        bond_pars.append((bond_couplings, bond_fields))
+    return bond_pars
+
+
+def local_hamiltonian_renormalization(isometries, couplings, fields, system_qubit_number):
+    """ Renormalized operators to calculate local energy density """
+    def renorm(bond_pars):
+        coups, flds = bond_pars
+        bond_mpo = params2hamiltonian_mpo(coups, flds)
+        return renorm_hamiltonian(bond_mpo, isometries, system_qubit_number)
+
+    bond_pars_list = _bond_ham(couplings, fields)
+    return list(map(renorm, bond_pars_list))
