@@ -53,7 +53,7 @@ def run_experiment(set_of_params: ExperimentParameters):
     for params in zip(*set_of_params):
         params = ExperimentParameters(*params)
 
-        print("Environment cooling experimant started")
+        print("Environment cooling experiment started")
         key = random.PRNGKey(params.random_seed)
 
         print("Subexperiment #{} is run. \n".format(i+1))
@@ -206,7 +206,9 @@ def run_experiment(set_of_params: ExperimentParameters):
         save_data(controlled_mutual_information, dir_path + '/controlled_mutual_information.pickle')
 
         # REDUCED_ORDER MODEL BASED DYNAMICS SIMULATION WITH CONTROL
-        controlled_ro_model_based_density_matrices = ro_sim.compute_dynamics(ro_model, control_gates, system_state)
+        controlled_ro_model_based_density_matrices, controlled_states = ro_sim.compute_dynamics(ro_model,
+                                                                                                control_gates,
+                                                                                                system_state)
 
         # LOGGING SIMULATED DATA
         save_data(controlled_ro_model_based_density_matrices, dir_path + '/controlled_ro_based_density_matrices.pickle')
@@ -255,7 +257,7 @@ def run_experiment(set_of_params: ExperimentParameters):
         plt.plot(learning_curve, 'b')
         plt.ylabel('loss_value')
         plt.xlabel('epoch_number')
-        plt.yscale('log')
+        #plt.yscale('log')
         plt.savefig(dir_path + '/learning_curve.pdf')
 
         # plt.figure()
