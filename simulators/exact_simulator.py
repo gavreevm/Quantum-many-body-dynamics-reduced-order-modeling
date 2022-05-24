@@ -19,14 +19,12 @@ class ExactSimulator:
                    system_qubit_number: int,
                    controlled_qubit_number: int,
                    discrete_time: int) -> ExactSimulatorState:
-        """[This method initializes state of the simulator.]
-
-        Args:
+        """ This method initializes state of the simulator
+        Args
             number_of_qubits (int): [number of qubits in a system (must be odd)]
             system_qubit_number (int): [number of a qubit that is seen as the target system]
             controlled_qubit_number (int): [number of qubit under control]
             discrete_time (int): [number of time steps]
-
         Returns:
             ExactSimulatorState: [state of the simulator]
         """

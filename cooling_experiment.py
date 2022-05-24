@@ -260,12 +260,6 @@ def run_experiment(set_of_params: ExperimentParameters):
         #plt.yscale('log')
         plt.savefig(dir_path + '/learning_curve.pdf')
 
-        # plt.figure()
-        # plt.imshow(zero_control_mutual_information, cmap='inferno')
-        # plt.xlabel('spin_number')
-        # plt.ylabel('N')
-        # plt.savefig(dir_path + '/zero_control_mutual_information.pdf')
-
         plt.figure()
         plt.imshow(controlled_mutual_information, cmap='inferno')
         plt.xlabel('spin_number')
