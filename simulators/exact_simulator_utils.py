@@ -67,6 +67,27 @@ def _get_local_rho(state: jnp.ndarray, n: Union[jnp.ndarray, int]) -> jnp.ndarra
     return rhos
 
 
+def _get_two_local_rho(state: jnp.ndarray, n: Union[jnp.ndarray, int]) -> jnp.ndarray:
+    """[This function returns individual density matricies of all subsystems.]
+    Args:
+        state (complex valued jnp.ndarray of shape (2 ** n,)): [input state]
+        n (Union[jnp.ndarray, int]): [number of subsystems]
+    Returns:
+        complex valued jnp.ndarray of shape (n, 2, 2): [density matrices of all subsystems]
+    """
+
+    def iter(state, xs):
+        state = state.reshape((2, 2, -1))
+        two_rho = jnp.tensordot(state, state.conj(), axes=((-1), (-1)))
+        state = state.reshape((2, -1))
+        state = state.T
+        state = state.reshape((-1,))
+        return state, two_rho
+
+    _, rhos = scan(iter, state, None, length=n-1)
+    return rhos
+
+
 def _apply_control_signal(state: jnp.ndarray, u: jnp.ndarray, n: Union[int, jnp.ndarray]) -> jnp.ndarray:
     """[This function applies a control gate to the input state]
 

@@ -3,7 +3,7 @@ from jax import jit, vmap
 from jax.lax import scan
 from functools import partial
 
-from simulators.exact_simulator_utils import _get_local_rho, _apply_layer, _apply_control_signal, complete_system, M_inv
+from simulators.exact_simulator_utils import _get_local_rho, _get_two_local_rho, _apply_layer, _apply_control_signal, complete_system, M_inv
 from simulators.dataclasses import ExactSimulatorState
 
 
@@ -61,8 +61,8 @@ class ExactSimulator:
             controlled_qubit_number (int): [number of qubit under control]
 
         Returns:
-            complex valued jnp.ndarray of shape (discrete_time, number_of_qubits, 2, 2): [dynamics of
-            density matrices]
+            complex valued jnp.ndarray of shape (discrete_time, number_of_qubits, 2, 2):
+            [dynamics of density matrices]
         """
 
         state = jnp.tensordot(initial_system_state, initial_environment_state, axes=0)
@@ -70,14 +70,15 @@ class ExactSimulator:
         state = state.transpose((1, 0, 2))
         state = state.reshape((-1,))
 
-        def iter(state, u):
+        def iteration(state, unitary):
             state = _apply_layer(gates_layer, state)
-            state = _apply_control_signal(state, u, sim_state.controlled_qubit_number)
-            rhos = _get_local_rho(state, sim_state.number_of_qubits)
-            return state, rhos
+            state = _apply_control_signal(state, unitary, sim_state.controlled_qubit_number)
+            loc_rhos = _get_local_rho(state, sim_state.number_of_qubits)
+            two_rhos = _get_two_local_rho(state, sim_state.number_of_qubits)
+            return state, (loc_rhos, two_rhos)
 
-        _, rhos = scan(iter, state, control_gates)
-        return rhos
+        _, (loc_rhos, two_rhos) = scan(iteration, state, control_gates)
+        return loc_rhos, two_rhos
 
 
     @partial(jit, static_argnums=(0, 1))
@@ -106,5 +107,5 @@ class ExactSimulator:
 
         fun = vmap(self.compute_dynamics_of_density_matrices, in_axes=(None, 0, None, None, None), out_axes=-1)
         phi = fun(sim_state, complete_system, initial_environment_state, gates_layer, control_gates)
-        phi = jnp.tensordot(phi, M_inv, axes=1)
+        phi = jnp.tensordot(phi[0], M_inv, axes=1)
         return phi

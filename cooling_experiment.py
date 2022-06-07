@@ -12,7 +12,7 @@ from datetime import datetime
 import matplotlib.pyplot as plt
 
 from simulators.logger import save_params, save_data
-from simulators.models_utils import params2gates_layer
+from simulators.models_utils import params2gates_layer, energy_dist
 from simulators.exact_simulator import ExactSimulator
 from simulators.reduced_order_simulator import ReducedOrderSimulator
 from simulators.control import optimize
@@ -64,18 +64,31 @@ def run_experiment(set_of_params: ExperimentParameters):
         # Save parameters
         save_params(asdict(params), dir_path + '/params.txt')
         # Gates
-        gates_layer = params2gates_layer(params)
+        gates_layer, ham_layer = params2gates_layer(params)
         save_data(gates_layer, dir_path + '/gates_layer.pickle')
+        save_data(ham_layer, dir_path + '/ham_layer.pickle')
+        print("Gates layer generated")
+
         # Initial env. state for ROM simulator
-        ro_env_state = (params.n - 1) * [jnp.array(params.env_single_spin_state, dtype=jnp.complex64)]
+        ro_env_state = (params.n - 1) * [jnp.array(params.env_single_spin_state,
+                                                   dtype=jnp.complex64)]
+        print("ROM environment state: INIT")
+
         # Initial env. state for exact simulator
         ex_env_state = rom2exact_init_state_converter(ro_env_state)
+        print("Exact environment state: INIT")
+
         # System state
         system_state = jnp.array(params.system_state, dtype=jnp.complex64)
+        print("Exact system state: INIT")
+
         # Zero control seq.
         trivial_control_gates = zero_control_seq(params.N)
+        print("Trivial control gates: INIT")
+
         # Initial non-zero control seq.
         control_gates = random_control_seq(key, params.N)
+        print("Random control gates: INIT")
 
         ##################################################
         # EXACT DYNAMICS SIMULATION
@@ -86,48 +99,55 @@ def run_experiment(set_of_params: ExperimentParameters):
             params.system_qubit,
             params.N,
         )
-        zero_control_quantum_channels = ex_sim.compute_quantum_channels(
-            ex_sim_state,
-            ex_env_state,
-            gates_layer,
-            trivial_control_gates,
-        )
-        zero_control_exact_density_matrices = channels2rhos(zero_control_quantum_channels,
-                                                                            system_state)
+
+        zero_control_exact_loc_density_matrices, \
+        zero_control_exact_two_density_matrices = ex_sim.compute_dynamics_of_density_matrices(
+                                                                        ex_sim_state,
+                                                                        system_state,
+                                                                        ex_env_state,
+                                                                        gates_layer,
+                                                                        trivial_control_gates)
 
         # LOGGING SIMULATED DATA
-        save_data(zero_control_quantum_channels, dir_path + \
-                    '/zero_control_quantum_channels.pickle')
-        save_data(zero_control_exact_density_matrices, dir_path + \
-                    '/zero_control_exact_density_matrices.pickle')
+        save_data(zero_control_exact_loc_density_matrices, dir_path + \
+                    '/zero_control_exact_local_density_matrices.pickle')
+        save_data(zero_control_exact_two_density_matrices, dir_path + \
+                    '/zero_control_exact_twolocal_density_matrices.pickle')
+        print("Exact simulation under zero control: DONE")
+        print("Subexperiment #{}".format(i+1))
 
-        print("Exact simulation under zero control is done. Subexperiment #{}".format(i+1))
-
+        ##################################################
+        # ZERO CONTROL ENERGY FLOW
+        zero_control_energy_distribution = energy_dist(ham_layer,
+                                           zero_control_exact_two_density_matrices)
+        save_data(zero_control_energy_distribution, dir_path + \
+                    '/zero_control_energy_distribution.pickle')
+        print("Zero control energy flow: DONE")
         ##################################################
         # REDUCED_ORDER MODEL BASED DYNAMICS SIMULATION
         ro_sim = ReducedOrderSimulator()
         ro_model, isometries, _ = ro_sim.build_reduced_order_model(
-            params.system_qubit,
-            params.system_qubit,
-            params.N,
-            ro_env_state,
-            gates_layer,
-            params.full_truncation,
-            params.truncate_when,
-            params.eps)
+                                            params.system_qubit,
+                                            params.system_qubit,
+                                            params.N,
+                                            ro_env_state,
+                                            gates_layer,
+                                            params.full_truncation,
+                                            params.truncate_when,
+                                            params.eps)
 
-        zero_control_ro_model_density_matrices, ro_states = ro_sim.compute_dynamics(
-                                                                ro_model,
-                                                                trivial_control_gates,
-                                                                system_state)
+        zero_control_ro_density_matrices, ro_states = ro_sim.compute_dynamics(
+                                                        ro_model,
+                                                        trivial_control_gates,
+                                                        system_state)
 
         # LOGGING SIMULATED DATA
         #save_data(ro_model, dir_path + '/ro_model.pickle')
-        save_data(zero_control_ro_model_density_matrices, dir_path +\
-                  '/zero_control_ro_based_density_matrices.pickle')
-
-        print("Reduced-order model is built. Subexperiment #{}".format(i+1))
-        print("Control sequence optimization is run:")
+        save_data(zero_control_ro_density_matrices, dir_path +\
+                  '/zero_control_reduced_order_density_matrices.pickle')
+        print("Reduced-order model: DONE")
+        print("Subexperiment #{}".format(i+1))
+        print("RUNNING Control sequence optimization:")
 
         ##################################################
         # CONTROL SIGNAL OPTIMIZATION
@@ -153,7 +173,7 @@ def run_experiment(set_of_params: ExperimentParameters):
 
         # Hamiltonian renormalization
         mpo_hamiltonian = params2hamiltonian_mpo(couplings, fields)
-        print('Hamiltonian MPO composed')
+        print('Hamiltonian MPO: DONE')
 
         if params.system_qubit == 0:
             last_iso = ([], resh_bot_iso[-1])
@@ -165,28 +185,29 @@ def run_experiment(set_of_params: ExperimentParameters):
         renormalized_ham = renorm_hamiltonian(mpo_hamiltonian,
                                               last_iso,
                                               params.system_qubit)
-        print('Hamiltonian renormalization finished')
+        print('Hamiltonian renormalization: DONE')
 
         # Loss function that is being optimized
         def loss_function(ro_model, control_gates):
             _, ro_states = ro_sim.compute_dynamics(ro_model, control_gates, system_state)
             return environment_energy(renormalized_ham, ro_states[-1])
 
-        print('Optimization started')
+        print("Optimization process START:")
         control_gates, learning_curve = optimize(
-            loss_function,
-            ro_model,
-            control_gates,
-            params.number_of_epoches,
-            params.epoch_size,
-            params.learning_rate,
+                                loss_function,
+                                ro_model,
+                                control_gates,
+                                params.number_of_epoches,
+                                params.epoch_size,
+                                params.learning_rate,
         )
 
         # LOGGING SIMULATED DATA
         save_data(control_gates, dir_path + '/control_gates.pickle')
         save_data(learning_curve, dir_path + '/learning_curve.pickle')
 
-        print("Optimal control sequence is found. Subexperiment #{}".format(i+1))
+        print("Control sequence optimization: DONE")
+        print("Subexperiment #{}".format(i+1))
 
 
         ##################################################
@@ -206,42 +227,66 @@ def run_experiment(set_of_params: ExperimentParameters):
         save_data(controlled_mutual_information, dir_path + '/controlled_mutual_information.pickle')
 
         # REDUCED_ORDER MODEL BASED DYNAMICS SIMULATION WITH CONTROL
-        controlled_ro_model_based_density_matrices, controlled_states = ro_sim.compute_dynamics(ro_model,
-                                                                                                control_gates,
-                                                                                                system_state)
+        controlled_ro_density_matrices, controlled_states = ro_sim.compute_dynamics(ro_model,
+                                                                                control_gates,
+                                                                                system_state)
 
         # LOGGING SIMULATED DATA
-        save_data(controlled_ro_model_based_density_matrices, dir_path + '/controlled_ro_based_density_matrices.pickle')
+        save_data(controlled_ro_density_matrices, dir_path + '/controlled_ro_based_density_matrices.pickle')
+        print("Exact dynamics simulation under optimal control sequence for subexperiment #{}: DONE.".format(i+1))
 
-        print("Exact dynamics simulation under optimal control sequence for subexperiment #{} is done.".format(i+1))
+        ##################################################
+        # CONTROLLED ENEGY FLOW
 
+        controlled_exact_loc_density_matrices, \
+        controlled_exact_two_density_matrices = ex_sim.compute_dynamics_of_density_matrices(
+                                                                        ex_sim_state,
+                                                                        system_state,
+                                                                        ex_env_state,
+                                                                        gates_layer,
+                                                                        control_gates)
+        controlled_energy_distribution = energy_dist(ham_layer,
+                                           controlled_exact_two_density_matrices)
+        save_data(controlled_energy_distribution, dir_path + \
+                    '/controlled_energy_distribution.pickle')
+        print("Controlled energy flow: DONE")
 
+        ##################################################
         #SIMPLE PLOTTING
-        zero_control_ro_bloch_vectors = rho2bloch(zero_control_ro_model_density_matrices)
-        zero_control_exact_bloch_vectors = rho2bloch(zero_control_exact_density_matrices[:, params.system_qubit])
-        controlled_ro_bloch_vectors = rho2bloch(controlled_ro_model_based_density_matrices)
+
+        zero_control_ro_bloch_vectors = rho2bloch(zero_control_ro_density_matrices)
+        zero_control_exact_bloch_vectors = rho2bloch(zero_control_exact_loc_density_matrices[:, params.system_qubit])
+        controlled_ro_bloch_vectors = rho2bloch(controlled_ro_density_matrices)
         controlled_exact_bloch_vectors = rho2bloch(controlled_exact_density_matrices[:, params.system_qubit])
 
-        plt.figure()
-        plt.plot(zero_control_ro_bloch_vectors[:, 0], 'r')
-        plt.plot(zero_control_ro_bloch_vectors[:, 1], 'b')
-        plt.plot(zero_control_ro_bloch_vectors[:, 2], 'k')
-        plt.plot(zero_control_exact_bloch_vectors[:, 0], '*r')
-        plt.plot(zero_control_exact_bloch_vectors[:, 1], 'ob')
-        plt.plot(zero_control_exact_bloch_vectors[:, 2], 'xk')
-        plt.legend(['exact x', 'exact y', 'exact z', 'ro x', 'ro y', 'ro z'])
+        plt.figure(figsize=(15, 5))
+        plt.imshow(zero_control_energy_distribution, cmap='inferno_r')
+        plt.savefig(dir_path + '/zero_control_energy_distribution.pdf')
+
+        plt.figure(figsize=(15, 5))
+        plt.imshow(controlled_energy_distribution, cmap='inferno_r')
+        plt.savefig(dir_path + '/controlled_energy_distribution.pdf')
+
+        plt.figure(figsize=(12, 4))
+        plt.plot(zero_control_ro_bloch_vectors[:, 0], 'or', markersize=4)
+        plt.plot(zero_control_ro_bloch_vectors[:, 1], 'ob', markersize=4)
+        plt.plot(zero_control_ro_bloch_vectors[:, 2], 'og', markersize=4)
+        plt.plot(zero_control_exact_bloch_vectors[:, 0], '--r')
+        plt.plot(zero_control_exact_bloch_vectors[:, 1], '--b')
+        plt.plot(zero_control_exact_bloch_vectors[:, 2], '--g')
+        plt.legend(['Exact x', 'Exact y', 'Exact z', 'RO x', 'RO y', 'RO z'])
         plt.ylabel('Amplitude')
         plt.xlabel('N')
         plt.savefig(dir_path + '/zero_control_dynamics.pdf')
 
-        plt.figure()
-        plt.plot(controlled_ro_bloch_vectors[:, 0], 'r')
-        plt.plot(controlled_ro_bloch_vectors[:, 1], 'b')
-        plt.plot(controlled_ro_bloch_vectors[:, 2], 'k')
-        plt.plot(controlled_exact_bloch_vectors[:, 0], '*r')
-        plt.plot(controlled_exact_bloch_vectors[:, 1], 'ob')
-        plt.plot(controlled_exact_bloch_vectors[:, 2], 'xk')
-        plt.legend(['exact x', 'exact y', 'exact z', 'ro x', 'ro y', 'ro z'])
+        plt.figure(figsize=(12, 4))
+        plt.plot(controlled_ro_bloch_vectors[:, 0], 'or', markersize=4)
+        plt.plot(controlled_ro_bloch_vectors[:, 1], 'ob', markersize=4)
+        plt.plot(controlled_ro_bloch_vectors[:, 2], 'ok', markersize=4)
+        plt.plot(controlled_exact_bloch_vectors[:, 0], '--r')
+        plt.plot(controlled_exact_bloch_vectors[:, 1], '--b')
+        plt.plot(controlled_exact_bloch_vectors[:, 2], '--g')
+        plt.legend(['Exact x', 'Exact y', 'Exact z', 'RO x', 'RO y', 'RO z'])
         plt.ylabel('Amplitude')
         plt.xlabel('N')
         plt.savefig(dir_path + '/controlled_dynamics.pdf')
@@ -257,14 +302,7 @@ def run_experiment(set_of_params: ExperimentParameters):
         plt.plot(learning_curve, 'b')
         plt.ylabel('loss_value')
         plt.xlabel('epoch_number')
-        #plt.yscale('log')
         plt.savefig(dir_path + '/learning_curve.pdf')
-
-        plt.figure()
-        plt.imshow(controlled_mutual_information, cmap='inferno')
-        plt.xlabel('spin_number')
-        plt.ylabel('N')
-        plt.savefig(dir_path + '/controlled_mutual_information.pdf')
         i += 1
 
 run_experiment(set_of_params)

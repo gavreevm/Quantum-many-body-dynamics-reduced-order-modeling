@@ -65,7 +65,11 @@ def params2gates_layer(params: ExperimentParameters) -> jnp.ndarray:
     U_up = U_up[jnp.newaxis]
     U_central = jnp.tile(U_central[jnp.newaxis], (n-3, 1, 1))
 
-    return jnp.concatenate([U_up, U_central, U_down], axis=0)
+    H_down = H_down[jnp.newaxis]
+    H_up = H_up[jnp.newaxis]
+    H_central = jnp.tile(H_central[jnp.newaxis], (n-3, 1, 1))
+
+    return jnp.concatenate([U_up, U_central, U_down], axis=0), jnp.concatenate([H_up, H_central, H_down], axis=0)
 
 
 def sample_disordered_floquet(params: ExperimentParameters) -> jnp.ndarray:
@@ -97,3 +101,16 @@ def sample_disordered_floquet(params: ExperimentParameters) -> jnp.ndarray:
     gates = jnp.concatenate([first_layer, second_layer], axis=1)
     gates = gates.reshape((-1, 4, 4))
     return gates
+
+
+def energy_dist(ham_layer, two_density_layers) -> jnp.ndarray:
+    """ Calculate energy distribution """
+
+    def local_energy(ham_layer, two_density_layer):
+        def engy(el):
+            ham, rho = el
+            return jnp.tensordot(ham, rho.reshape(4, 4), axes=((0, 1), (1, 0)))
+
+        return list(map(engy, zip(ham_layer, two_density_layer)))
+
+    return jnp.array(list(map(lambda x: local_energy(ham_layer, x), two_density_layers))).real.T
